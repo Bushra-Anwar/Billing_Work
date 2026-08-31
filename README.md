@@ -1,16 +1,43 @@
-# React + Vite
+# 🧾 Billing Work
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern React-based billing management application designed
+to simplify invoice creation and billing operations.
 
-Currently, two official plugins are available:
+## 🌐 Live Demo
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+https://billing-work.vercel.app/
 
-## React Compiler
+## ✨ Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Create bills/invoices
+- Manage billing information
+- Product/item management
+- Customer information
+- Invoice calculation
+- Responsive interface
+- Clean billing workflow
 
-## Expanding the ESLint configuration
+## 🛠️ Tech Stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- React
+- JavaScript
+- Vite
+- CSS
+- HTML
+
+## 📸 Screenshots
+
+Add:
+- Dashboard
+  <img width="1919" height="883" alt="image" src="https://github.com/user-attachments/assets/043688e2-3793-44d6-88f3-7d8b2d3485d1" />
+
+- Invoice
+- <img width="1920" height="939" alt="image" src="https://github.com/user-attachments/assets/b9a1939d-80ed-4745-af5d-f6ab09519127" />
+
+- Product section
+- <img width="1917" height="924" alt="image" src="https://github.com/user-attachments/assets/22fbd6b6-d88e-4ff6-a4bb-8b1cfa0f613e" />
+
+- Customer section
+<img width="1903" height="943" alt="image" src="https://github.com/user-attachments/assets/c55ca739-72f6-4eed-809d-c27bfc8e5f5d" />
+
+
