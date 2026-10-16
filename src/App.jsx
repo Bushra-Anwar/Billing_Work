@@ -232,11 +232,11 @@ function App() {
 
               <div className="profile-wrapper" style={{ position: 'relative' }}>
                 <div className="profile-avatar" onClick={() => setShowProfile(!showProfile)} style={{ cursor: 'pointer', fontSize: '1.5rem', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '50%', padding: '0.3rem', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px' }}>
-                  {user ? user.firstName[0].toUpperCase() : '👤'}
+                  {user ? (user.name || user.firstName || 'U')[0].toUpperCase() : '👤'}
                 </div>
                 {showProfile && (
                   <div className="dropdown-menu fade-in" style={{ position: 'absolute', right: 0, top: '50px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '1rem', width: '150px', zIndex: 100 }}>
-                    <div className="dropdown-header" style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>{user ? user.firstName : 'My Profile'}</div>
+                    <div className="dropdown-header" style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>{user ? (user.name || user.firstName || 'My Profile') : 'My Profile'}</div>
                     <div className="dropdown-item">Settings</div>
                     {user ? (
                       <div className="dropdown-item" onClick={() => { logout(); setActiveTab('Home'); }}>Log Out</div>

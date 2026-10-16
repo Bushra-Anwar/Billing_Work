@@ -8,46 +8,33 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
+    // Load user from localStorage directly — no backend needed
+    const savedUser = localStorage.getItem('currentUser');
+    const savedToken = localStorage.getItem('token');
+    if (savedUser && savedToken) {
       try {
-        const response = await fetch('http://localhost:5000/api/auth/me', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data);
-        } else {
-          setToken(null);
-          localStorage.removeItem('token');
-        }
-      } catch (error) {
-        console.error('Error fetching user:', error);
-      } finally {
-        setLoading(false);
+        setUser(JSON.parse(savedUser));
+        setToken(savedToken);
+      } catch {
+        localStorage.removeItem('currentUser');
+        localStorage.removeItem('token');
       }
-    };
-
-    fetchUser();
-  }, [token]);
+    }
+    setLoading(false);
+  }, []);
 
   const login = (userData, jwtToken) => {
     setUser(userData);
     setToken(jwtToken);
     localStorage.setItem('token', jwtToken);
+    localStorage.setItem('currentUser', JSON.stringify(userData));
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('token');
+    localStorage.removeItem('currentUser');
   };
 
   return (
