@@ -56,6 +56,16 @@
   gap: 0.25rem;
 }
 
+.type-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--hover-bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
 .customer-cell {
   display: flex;
   align-items: center;
@@ -444,4 +454,99 @@
   .invoice-title-area {
     text-align: left;
   }
+}
+
+/* Template Styles */
+.invoice-paper.template-modern {
+  border-top: 12px solid #6b21a8;
+  border-radius: 12px;
+  padding: 0;
+  overflow: hidden;
+}
+.invoice-paper.template-modern > div:not(:last-child) {
+  padding: 0 3rem;
+}
+.invoice-paper.template-modern .paper-header {
+  padding-top: 3rem;
+}
+
+.invoice-paper.template-corporate {
+  border-top: 24px solid #1e3a8a;
+  border-radius: 16px;
+  padding: 0;
+  overflow: hidden;
+}
+.invoice-paper.template-corporate > div:not(:last-child) {
+  padding: 0 3rem;
+}
+.invoice-paper.template-corporate .paper-header {
+  padding-top: 3rem;
+}
+
+.invoice-paper.template-minimal {
+  border-top: 4px solid #0f766e;
+  border-radius: 8px;
+  padding: 3rem;
+}
+
+.invoice-paper.template-thermal {
+  max-width: 350px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: 'Courier New', Courier, monospace;
+  color: #000;
+  background: #fff;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-radius: 0;
+}
+.template-thermal .thermal-header {
+  text-align: center;
+}
+.template-thermal .thermal-header h2 {
+  font-size: 1.6rem;
+  margin-bottom: 0.25rem;
+  font-weight: 800;
+}
+.template-thermal .thermal-header p {
+  font-size: 0.85rem;
+  margin-bottom: 0.2rem;
+}
+.template-thermal .thermal-meta {
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px dashed #000;
+  padding-bottom: 1rem;
+}
+.template-thermal .thermal-table {
+  width: 100%;
+  font-size: 0.85rem;
+  border-collapse: collapse;
+}
+.template-thermal .thermal-table th {
+  border-bottom: 1px dashed #000;
+  padding-bottom: 0.5rem;
+  text-align: left;
+}
+.template-thermal .thermal-table td {
+  padding: 0.5rem 0;
+}
+.template-thermal .thermal-totals {
+  border-top: 1px dashed #000;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  font-size: 0.9rem;
+}
+.template-thermal .thermal-footer {
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 0.8rem;
+  border-top: 1px dashed #000;
+  padding-top: 1rem;
+}
+.template-thermal .barcode-placeholder {
+  width: 100%;
+  height: 50px;
+  background: repeating-linear-gradient(90deg, #000, #000 2px, transparent 2px, transparent 4px, #000 4px, #000 7px, transparent 7px, transparent 10px, #000 10px, #000 11px, transparent 11px, transparent 14px);
+  margin-top: 1rem;
 }

@@ -1,52 +1,307 @@
-import React, { useState } from 'react';
-import { 
-  FileText, Plus, Search, Filter, Download, MoreVertical, 
-  Printer, Mail, Copy, Trash2, Edit, CheckCircle, Clock, AlertCircle
+import React, { useState, useEffect } from 'react';
+import {
+  FileText, Plus, Search, Filter, Download, MoreVertical,
+  Printer, Mail, Copy, Trash2, Edit, CheckCircle, Clock, AlertCircle, Share2, DollarSign
 } from 'lucide-react';
 import './InvoiceManagement.css';
-
-const MOCK_INVOICES = [
-  {
-    id: 'INV-2026-001',
-    customer: 'Acme Corp',
-    date: '2026-01-15',
-    dueDate: '2026-01-30',
-    amount: 12500,
-    status: 'Paid',
-    type: 'Tax Invoice'
-  },
-  {
-    id: 'INV-2026-002',
-    customer: 'Global Tech',
-    date: '2026-01-20',
-    dueDate: '2026-02-04',
-    amount: 45000,
-    status: 'Overdue',
-    type: 'Tax Invoice'
-  },
-  {
-    id: 'INV-2026-003',
-    customer: 'Sarah Jenkins',
-    date: '2026-02-10',
-    dueDate: '2026-02-25',
-    amount: 8500,
-    status: 'Sent',
-    type: 'Proforma'
-  },
-  {
-    id: 'DRAFT-004',
-    customer: 'TechVision Ltd',
-    date: '2026-02-12',
-    dueDate: '2026-02-27',
-    amount: 0,
-    status: 'Draft',
-    type: 'Tax Invoice'
-  }
-];
+import { invoiceApi, customerApi, productApi } from '../api';
 
 export default function InvoiceManagement({ onBack }) {
   const [activeView, setActiveView] = useState('dashboard'); // dashboard, create, view
-  const [invoices] = useState(MOCK_INVOICES);
+  const [invoices, setInvoices] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalPaid: 0,
+    totalOutstanding: 0,
+    totalOverdue: 0,
+    totalInvoices: 0
+  });
+
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTemplate, setActiveTemplate] = useState('modern');
+
+  // Payment recording state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+
+  // Form State for creating new invoice
+  const [newInvoice, setNewInvoice] = useState({
+    id: `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+    customer: '',
+    customerPhone: '',
+    customerGstin: '',
+    date: new Date().toISOString().split('T')[0],
+    dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+    type: 'Tax Invoice',
+    items: [
+      { id: 1, productId: '', name: '', description: '', hsnCode: '998311', qty: 1, rate: 0, tax: 18, amount: 0 }
+    ],
+    discount: 0,
+    discountType: '%',
+    paymentStatus: 'Paid',
+    paymentMethod: 'Cash',
+    notes: 'Thank you for your business!',
+    terms: 'Goods once sold cannot be returned. Payment due within 15 days.'
+  });
+
+  useEffect(() => {
+    loadInvoices();
+    loadCustomersAndProducts();
+  }, [activeFilter, searchQuery]);
+
+  const loadInvoices = async () => {
+    try {
+      setLoading(true);
+      const params = {};
+      if (activeFilter !== 'All') params.status = activeFilter;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+
+      const [invData, statsData] = await Promise.all([
+        invoiceApi.getAll(params),
+        invoiceApi.getStats()
+      ]);
+
+      setInvoices(invData || []);
+      if (statsData) setStats(statsData);
+    } catch (err) {
+      console.error('Error loading invoices:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCustomersAndProducts = async () => {
+    try {
+      const [cList, pList] = await Promise.all([
+        customerApi.getAll(),
+        productApi.getAll()
+      ]);
+      setCustomers(cList || []);
+      setProducts(pList || []);
+
+      if (cList && cList.length > 0 && !newInvoice.customer) {
+        setNewInvoice(prev => ({
+          ...prev,
+          customer: cList[0].name,
+          customerPhone: cList[0].phone || '',
+          customerGstin: cList[0].gst || ''
+        }));
+      }
+    } catch (err) {
+      console.error('Error loading master data:', err);
+    }
+  };
+
+  const handleCustomerSelect = (custName) => {
+    const found = customers.find(c => c.name === custName);
+    setNewInvoice(prev => ({
+      ...prev,
+      customer: custName,
+      customerPhone: found ? found.phone : '',
+      customerGstin: found ? (found.gst || '') : ''
+    }));
+  };
+
+  const handleProductSelect = (rowId, prodId) => {
+    const prod = products.find(p => p._id === prodId || p.productId === prodId);
+    if (!prod) return;
+
+    let taxNum = 18;
+    if (prod.taxRate) {
+      const parsed = parseFloat(prod.taxRate.replace(/[^0-9.]/g, ''));
+      if (!isNaN(parsed)) taxNum = parsed;
+    }
+
+    setNewInvoice(prev => ({
+      ...prev,
+      items: prev.items.map(it => {
+        if (it.id === rowId) {
+          const qty = it.qty || 1;
+          const rate = prod.price || 0;
+          const itemTax = (qty * rate * taxNum) / 100;
+          return {
+            ...it,
+            productId: prod._id,
+            name: prod.name,
+            description: prod.category || '',
+            hsnCode: prod.hsnCode || '998311',
+            rate,
+            tax: taxNum,
+            amount: (qty * rate) + itemTax
+          };
+        }
+        return it;
+      })
+    }));
+  };
+
+  const handleAddItem = () => {
+    setNewInvoice(prev => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        { id: Date.now(), productId: '', name: '', description: '', hsnCode: '998311', qty: 1, rate: 0, tax: 18, amount: 0 }
+      ]
+    }));
+  };
+
+  const handleRemoveItem = (id) => {
+    if (newInvoice.items.length === 1) return;
+    setNewInvoice(prev => ({
+      ...prev,
+      items: prev.items.filter(item => item.id !== id)
+    }));
+  };
+
+  const handleItemChange = (id, field, value) => {
+    setNewInvoice(prev => {
+      const updatedItems = prev.items.map(item => {
+        if (item.id === id) {
+          const updated = { ...item, [field]: value };
+          const qty = parseFloat(updated.qty) || 0;
+          const rate = parseFloat(updated.rate) || 0;
+          const tax = parseFloat(updated.tax) || 0;
+          updated.amount = (qty * rate) + ((qty * rate * tax) / 100);
+          return updated;
+        }
+        return item;
+      });
+      return { ...prev, items: updatedItems };
+    });
+  };
+
+  // Calculations
+  const subtotal = newInvoice.items.reduce((sum, item) => sum + ((parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0)), 0);
+  const totalTax = newInvoice.items.reduce((sum, item) => sum + (((parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0) * (parseFloat(item.tax) || 0)) / 100), 0);
+
+  let discountAmount = parseFloat(newInvoice.discount) || 0;
+  if (newInvoice.discountType === '%') {
+    discountAmount = (subtotal * discountAmount) / 100;
+  }
+  const grandTotal = Math.max(0, subtotal + totalTax - discountAmount);
+
+  const handleSaveInvoice = async () => {
+    if (!newInvoice.customer) {
+      alert('Please select or specify a customer.');
+      return;
+    }
+    if (grandTotal <= 0) {
+      alert('Please add valid billable items to the invoice.');
+      return;
+    }
+
+    try {
+      const payload = {
+        invoiceNumber: newInvoice.id,
+        customerName: newInvoice.customer,
+        customerPhone: newInvoice.customerPhone,
+        customerGstin: newInvoice.customerGstin,
+        date: newInvoice.date,
+        dueDate: newInvoice.dueDate || newInvoice.date,
+        type: newInvoice.type,
+        items: newInvoice.items.map(it => ({
+          productId: it.productId,
+          name: it.name,
+          description: it.description,
+          hsnCode: it.hsnCode,
+          qty: parseFloat(it.qty) || 1,
+          rate: parseFloat(it.rate) || 0,
+          taxRate: parseFloat(it.tax) || 0,
+          amount: it.amount
+        })),
+        subtotal,
+        discount: parseFloat(newInvoice.discount) || 0,
+        discountType: newInvoice.discountType,
+        discountAmount,
+        totalTax,
+        cgstTotal: totalTax / 2,
+        sgstTotal: totalTax / 2,
+        grandTotal,
+        paidAmount: newInvoice.paymentStatus === 'Paid' ? grandTotal : 0,
+        balanceAmount: newInvoice.paymentStatus === 'Paid' ? 0 : grandTotal,
+        paymentStatus: newInvoice.paymentStatus,
+        paymentMethod: newInvoice.paymentMethod,
+        notes: newInvoice.notes,
+        terms: newInvoice.terms
+      };
+
+      await invoiceApi.create(payload);
+      alert('✅ Invoice successfully created and saved to database!');
+      await loadInvoices();
+      setActiveView('dashboard');
+
+      // Reset form
+      setNewInvoice({
+        id: `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`,
+        customer: customers.length > 0 ? customers[0].name : '',
+        customerPhone: customers.length > 0 ? customers[0].phone : '',
+        customerGstin: customers.length > 0 ? customers[0].gst : '',
+        date: new Date().toISOString().split('T')[0],
+        dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+        type: 'Tax Invoice',
+        items: [{ id: Date.now(), productId: '', name: '', description: '', hsnCode: '998311', qty: 1, rate: 0, tax: 18, amount: 0 }],
+        discount: 0,
+        discountType: '%',
+        paymentStatus: 'Paid',
+        paymentMethod: 'Cash',
+        notes: 'Thank you for your business!',
+        terms: 'Goods once sold cannot be returned.'
+      });
+    } catch (err) {
+      console.error('Failed to create invoice:', err);
+      alert(`Error creating invoice: ${err.message}`);
+    }
+  };
+
+  const handleOpenPreview = (inv) => {
+    setSelectedInvoice(inv);
+    setActiveView('view');
+  };
+
+  const handleDeleteInvoice = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to delete this invoice? Stock will be preserved.')) return;
+    try {
+      await invoiceApi.delete(id);
+      await loadInvoices();
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleWhatsAppShare = (inv) => {
+    const cust = inv.customerName || inv.customer || 'Customer';
+    const num = inv.invoiceNumber || inv.id;
+    const total = (inv.grandTotal || inv.amount || 0).toLocaleString('en-IN');
+    const msg = `*TAX INVOICE #${num}*\n\nDear ${cust},\nYour invoice for ₹${total} dated ${inv.date ? new Date(inv.date).toLocaleDateString() : 'today'} is generated.\nStatus: ${inv.paymentStatus || inv.status}\n\nThank you for choosing YourBill!`;
+    const phone = inv.customerPhone || '';
+    const url = phone ? `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleRecordPayment = async () => {
+    if (!selectedInvoice || !paymentAmount) return;
+    try {
+      await invoiceApi.recordPayment(selectedInvoice._id || selectedInvoice.id, {
+        amount: parseFloat(paymentAmount),
+        paymentMethod
+      });
+      alert('✅ Payment recorded successfully!');
+      setShowPaymentModal(false);
+      setPaymentAmount('');
+      await loadInvoices();
+      const updated = await invoiceApi.getById(selectedInvoice._id || selectedInvoice.id);
+      setSelectedInvoice(updated);
+    } catch (err) {
+      alert(`Error recording payment: ${err.message}`);
+    }
+  };
 
   const renderDashboard = () => (
     <div className="inv-dashboard fade-in">
@@ -57,7 +312,7 @@ export default function InvoiceManagement({ onBack }) {
           <p className="inv-subtitle">Create, track, and manage all your billing documents</p>
         </div>
         <div className="header-actions">
-          <button className="btn-secondary">Settings & Templates</button>
+          <button className="btn-secondary" onClick={() => setActiveTemplate('thermal')}>POS Thermal View</button>
           <button className="btn-primary rainbow-bg" onClick={() => setActiveView('create')}>
             <Plus size={18} /> Create Invoice
           </button>
@@ -68,33 +323,33 @@ export default function InvoiceManagement({ onBack }) {
         <div className="metric-card">
           <div className="metric-icon bg-green"><CheckCircle size={24} /></div>
           <div className="metric-info">
-            <h4>Paid This Month</h4>
-            <div className="metric-value">₹2.4M</div>
-            <div className="metric-trend positive">+15% vs last month</div>
+            <h4>Total Revenue</h4>
+            <div className="metric-value">₹{(stats.totalRevenue || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend positive">From {stats.totalInvoices || 0} Invoices</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-blue"><Clock size={24} /></div>
           <div className="metric-info">
             <h4>Outstanding</h4>
-            <div className="metric-value">₹850K</div>
-            <div className="metric-trend">Expected within 30 days</div>
+            <div className="metric-value">₹{(stats.totalOutstanding || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend">Receivable balance</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-orange"><AlertCircle size={24} /></div>
           <div className="metric-info">
             <h4>Overdue Invoices</h4>
-            <div className="metric-value text-orange">12</div>
-            <div className="metric-trend negative">₹320K total value</div>
+            <div className="metric-value text-orange">₹{(stats.totalOverdue || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend negative">Urgent follow-up needed</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-purple"><FileText size={24} /></div>
           <div className="metric-info">
-            <h4>Drafts / Pending</h4>
-            <div className="metric-value">5</div>
-            <div className="metric-trend">Needs approval</div>
+            <h4>Total Paid</h4>
+            <div className="metric-value">₹{(stats.totalPaid || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend positive">Successfully collected</div>
           </div>
         </div>
       </div>
@@ -102,21 +357,30 @@ export default function InvoiceManagement({ onBack }) {
       <div className="inv-section">
         <div className="section-header-row">
           <div className="tabs-simple">
-            <button className="tab-simple active">All Invoices</button>
-            <button className="tab-simple">Recurring</button>
-            <button className="tab-simple">Credit Notes</button>
-            <button className="tab-simple">Debit Notes</button>
+            {['All', 'Paid', 'Unpaid', 'Overdue'].map(st => (
+              <button
+                key={st}
+                className={`tab-simple ${activeFilter === st ? 'active' : ''}`}
+                onClick={() => setActiveFilter(st)}
+              >
+                {st === 'All' ? 'All Invoices' : st}
+              </button>
+            ))}
           </div>
           <div className="search-filter">
             <div className="search-box">
               <Search size={18} />
-              <input type="text" placeholder="Search by invoice # or customer..." />
+              <input
+                type="text"
+                placeholder="Search by invoice # or customer..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-            <button className="btn-secondary"><Filter size={18} /> Filter</button>
-            <button className="btn-secondary"><Download size={18} /></button>
+            <button className="btn-secondary" onClick={() => loadInvoices()}><Filter size={18} /> Refresh</button>
           </div>
         </div>
-        
+
         <div className="table-container">
           <table className="inv-table">
             <thead>
@@ -125,46 +389,69 @@ export default function InvoiceManagement({ onBack }) {
                 <th>Customer</th>
                 <th>Date / Due Date</th>
                 <th>Amount</th>
-                <th>Status</th>
+                <th>Payment Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {invoices.map(inv => (
-                <tr key={inv.id} className="clickable-row" onClick={() => setActiveView('view')}>
-                  <td>
-                    <div className="invoice-cell">
-                      <strong>{inv.id}</strong>
-                      <span className="type-badge">{inv.type}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="customer-cell">
-                      <div className="avatar small">{inv.customer.charAt(0)}</div>
-                      <span>{inv.customer}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="date-cell">
-                      <span>{inv.date}</span>
-                      <span className="sub-text text-orange">Due: {inv.dueDate}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <strong>₹{inv.amount.toLocaleString()}</strong>
-                  </td>
-                  <td>
-                    <span className={`status-badge ${inv.status.toLowerCase()}`}>{inv.status}</span>
-                  </td>
-                  <td>
-                    <div className="action-group">
-                      <button className="action-btn" onClick={(e) => e.stopPropagation()} title="Print"><Printer size={16} /></button>
-                      <button className="action-btn" onClick={(e) => e.stopPropagation()} title="Email"><Mail size={16} /></button>
-                      <button className="action-btn" onClick={(e) => e.stopPropagation()}><MoreVertical size={18} /></button>
-                    </div>
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', opacity: 0.7 }}>
+                    No invoices found. Click <strong>+ Create Invoice</strong> to generate your first bill.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                invoices.map(inv => {
+                  const invId = inv.invoiceNumber || inv.id || 'INV-000';
+                  const custName = inv.customerName || inv.customer || inv.clientName || 'Cash Sale';
+                  const amount = inv.grandTotal || inv.amount || 0;
+                  const st = inv.paymentStatus || inv.status || 'Paid';
+                  const dateStr = inv.date ? new Date(inv.date).toLocaleDateString() : 'N/A';
+                  const dueStr = inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : dateStr;
+
+                  return (
+                    <tr key={inv._id || inv.id} className="clickable-row" onClick={() => handleOpenPreview(inv)}>
+                      <td>
+                        <div className="invoice-cell">
+                          <strong>{invId}</strong>
+                          <span className="type-badge">{inv.type || 'Tax Invoice'}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="customer-cell">
+                          <div className="avatar small">{custName.charAt(0)}</div>
+                          <span>{custName}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="date-cell">
+                          <span>{dateStr}</span>
+                          <span className="sub-text text-orange">Due: {dueStr}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <strong>₹{amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                      </td>
+                      <td>
+                        <span className={`status-badge ${st.toLowerCase()}`}>{st}</span>
+                      </td>
+                      <td>
+                        <div className="action-group">
+                          <button className="action-btn" onClick={(e) => { e.stopPropagation(); handleOpenPreview(inv); }} title="View / Print">
+                            <Printer size={16} />
+                          </button>
+                          <button className="action-btn" onClick={(e) => { e.stopPropagation(); handleWhatsAppShare(inv); }} title="WhatsApp">
+                            <Share2 size={16} />
+                          </button>
+                          <button className="action-btn text-orange" onClick={(e) => handleDeleteInvoice(e, inv._id || inv.id)} title="Delete">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -177,103 +464,198 @@ export default function InvoiceManagement({ onBack }) {
       <div className="inv-header">
         <div>
           <button className="back-btn" onClick={() => setActiveView('dashboard')}>← Back to Invoices</button>
-          <h2 className="inv-title">Create Invoice</h2>
-          <p className="inv-subtitle">Draft a new tax invoice, proforma, or recurring bill</p>
+          <h2 className="inv-title">Create New Invoice</h2>
+          <p className="inv-subtitle">Standard GST-compliant invoicing connected to inventory and CRM</p>
         </div>
         <div className="header-actions">
-          <button className="btn-secondary" onClick={() => setActiveView('dashboard')}>Save as Draft</button>
-          <button className="btn-primary rainbow-bg" onClick={() => setActiveView('dashboard')}>Save & Send</button>
+          <button className="btn-secondary" onClick={() => setActiveView('dashboard')}>Cancel</button>
+          <button className="btn-primary rainbow-bg" onClick={handleSaveInvoice}>Save Invoice & Print</button>
         </div>
       </div>
 
       <div className="invoice-form-card">
-        {/* Invoice Header Details */}
         <div className="inv-form-header">
-          <div className="customer-selection">
-            <label>Customer *</label>
-            <select className="large-select">
-              <option>Select Customer...</option>
-              <option>Acme Corp</option>
-              <option>Global Tech</option>
-              <option>Sarah Jenkins</option>
-              <option>+ Add New Customer</option>
+          <div className="customer-selection" style={{ minWidth: '320px' }}>
+            <label>Customer Account *</label>
+            <select
+              className="large-select"
+              value={newInvoice.customer}
+              onChange={(e) => handleCustomerSelect(e.target.value)}
+            >
+              <option value="">-- Select Registered Customer --</option>
+              {customers.map(c => (
+                <option key={c._id || c.customerId} value={c.name}>
+                  {c.name} {c.phone ? `(${c.phone})` : ''}
+                </option>
+              ))}
             </select>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <input
+                type="text"
+                placeholder="Or type Walk-in Customer name"
+                value={newInvoice.customer}
+                onChange={(e) => setNewInvoice({ ...newInvoice, customer: e.target.value })}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+              <input
+                type="text"
+                placeholder="Phone"
+                value={newInvoice.customerPhone}
+                onChange={(e) => setNewInvoice({ ...newInvoice, customerPhone: e.target.value })}
+                style={{ width: '130px', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              />
+            </div>
           </div>
-          
+
           <div className="inv-meta-grid">
             <div className="input-group">
               <label>Invoice Number</label>
-              <input type="text" defaultValue="INV-2026-005" />
+              <input
+                type="text"
+                value={newInvoice.id}
+                onChange={(e) => setNewInvoice({ ...newInvoice, id: e.target.value })}
+              />
             </div>
             <div className="input-group">
               <label>Invoice Type</label>
-              <select>
-                <option>Tax Invoice</option>
-                <option>Proforma Invoice</option>
-                <option>Recurring Invoice</option>
+              <select value={newInvoice.type} onChange={(e) => setNewInvoice({ ...newInvoice, type: e.target.value })}>
+                <option value="Tax Invoice">Tax Invoice</option>
+                <option value="Sale Invoice">Sale Invoice</option>
+                <option value="Proforma">Proforma Invoice</option>
+                <option value="Cash Bill">Cash Bill</option>
               </select>
             </div>
             <div className="input-group">
               <label>Invoice Date</label>
-              <input type="date" defaultValue="2026-02-15" />
+              <input type="date" value={newInvoice.date} onChange={(e) => setNewInvoice({ ...newInvoice, date: e.target.value })} />
             </div>
             <div className="input-group">
               <label>Due Date</label>
-              <input type="date" defaultValue="2026-03-02" />
+              <input type="date" value={newInvoice.dueDate} onChange={(e) => setNewInvoice({ ...newInvoice, dueDate: e.target.value })} />
+            </div>
+            <div className="input-group">
+              <label>Payment Status</label>
+              <select value={newInvoice.paymentStatus} onChange={(e) => setNewInvoice({ ...newInvoice, paymentStatus: e.target.value })}>
+                <option value="Paid">Paid</option>
+                <option value="Unpaid">Unpaid</option>
+              </select>
+            </div>
+            <div className="input-group">
+              <label>Payment Mode</label>
+              <select value={newInvoice.paymentMethod} onChange={(e) => setNewInvoice({ ...newInvoice, paymentMethod: e.target.value })}>
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Card">Credit/Debit Card</option>
+                <option value="Net Banking">Net Banking</option>
+              </select>
             </div>
           </div>
         </div>
 
-        {/* Invoice Items Table */}
+        {/* Invoice Line Items */}
         <div className="inv-items-section">
           <table className="inv-items-table">
             <thead>
               <tr>
-                <th width="45%">Item Details</th>
+                <th width="40%">Item / Product Catalog</th>
                 <th width="15%">Qty</th>
-                <th width="15%">Rate (₹)</th>
-                <th width="15%">Tax (%)</th>
+                <th width="15%">Unit Rate (₹)</th>
+                <th width="15%">GST Slab</th>
                 <th width="10%">Amount</th>
                 <th width="5%"></th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>
-                  <input type="text" placeholder="Select or type item name..." className="item-input" defaultValue="Premium Cloud Hosting (1 Yr)" />
-                  <input type="text" placeholder="HSN/SAC Code" className="item-sub-input" defaultValue="998311" />
-                </td>
-                <td><input type="number" defaultValue="1" className="num-input" /></td>
-                <td><input type="number" defaultValue="12000" className="num-input" /></td>
-                <td>
-                  <select className="tax-select">
-                    <option>GST 18%</option>
-                    <option>GST 12%</option>
-                    <option>Exempt</option>
-                  </select>
-                </td>
-                <td className="item-amount">₹14,160</td>
-                <td><button className="action-btn text-orange"><Trash2 size={16} /></button></td>
-              </tr>
-              <tr>
-                <td>
-                  <input type="text" placeholder="Select or type item name..." className="item-input" />
-                  <input type="text" placeholder="Description (Optional)" className="item-sub-input" />
-                </td>
-                <td><input type="number" placeholder="1" className="num-input" /></td>
-                <td><input type="number" placeholder="0.00" className="num-input" /></td>
-                <td>
-                  <select className="tax-select">
-                    <option>Select Tax</option>
-                    <option>GST 18%</option>
-                  </select>
-                </td>
-                <td className="item-amount">₹0.00</td>
-                <td><button className="action-btn text-orange"><Trash2 size={16} /></button></td>
-              </tr>
+              {newInvoice.items.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    {products.length > 0 && (
+                      <select
+                        className="item-input"
+                        style={{ marginBottom: '4px' }}
+                        value={item.productId || ''}
+                        onChange={(e) => handleProductSelect(item.id, e.target.value)}
+                      >
+                        <option value="">-- Quick Pick from Inventory --</option>
+                        {products.map(p => (
+                          <option key={p._id || p.productId} value={p._id}>
+                            {p.name} (₹{p.price} | Stock: {p.stock})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      type="text"
+                      placeholder="Item name / Service description"
+                      className="item-input"
+                      value={item.name}
+                      onChange={(e) => handleItemChange(item.id, 'name', e.target.value)}
+                    />
+                    <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                      <input
+                        type="text"
+                        placeholder="HSN/SAC Code"
+                        className="item-sub-input"
+                        value={item.hsnCode}
+                        onChange={(e) => handleItemChange(item.id, 'hsnCode', e.target.value)}
+                        style={{ width: '120px' }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Description / Remarks"
+                        className="item-sub-input"
+                        value={item.description}
+                        onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.qty}
+                      onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
+                      className="num-input"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="0"
+                      value={item.rate}
+                      onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)}
+                      className="num-input"
+                    />
+                  </td>
+                  <td>
+                    <select
+                      className="tax-select"
+                      value={item.tax}
+                      onChange={(e) => handleItemChange(item.id, 'tax', e.target.value)}
+                    >
+                      <option value="18">GST 18%</option>
+                      <option value="12">GST 12%</option>
+                      <option value="5">GST 5%</option>
+                      <option value="28">GST 28%</option>
+                      <option value="0">Exempt (0%)</option>
+                    </select>
+                  </td>
+                  <td className="item-amount">
+                    ₹{item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                  <td>
+                    <button className="action-btn text-orange" onClick={() => handleRemoveItem(item.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          <button className="add-row-btn"><Plus size={16} /> Add New Row</button>
+          <button className="add-row-btn" onClick={handleAddItem}>
+            <Plus size={16} /> Add Another Line Item
+          </button>
         </div>
 
         {/* Invoice Footer / Totals */}
@@ -281,37 +663,52 @@ export default function InvoiceManagement({ onBack }) {
           <div className="inv-notes">
             <div className="input-group">
               <label>Customer Notes</label>
-              <textarea rows="3" placeholder="Thanks for your business."></textarea>
+              <textarea
+                rows="2"
+                value={newInvoice.notes}
+                onChange={(e) => setNewInvoice({ ...newInvoice, notes: e.target.value })}
+              />
             </div>
             <div className="input-group">
               <label>Terms & Conditions</label>
-              <textarea rows="3" placeholder="Payment due within 15 days..."></textarea>
+              <textarea
+                rows="2"
+                value={newInvoice.terms}
+                onChange={(e) => setNewInvoice({ ...newInvoice, terms: e.target.value })}
+              />
             </div>
           </div>
-          
+
           <div className="inv-totals">
             <div className="total-row">
               <span>Subtotal:</span>
-              <span>₹12,000.00</span>
+              <span>₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="total-row">
               <span>Discount:</span>
               <div className="discount-input">
-                <input type="number" placeholder="0" />
-                <select><option>%</option><option>₹</option></select>
+                <input
+                  type="number"
+                  placeholder="0"
+                  value={newInvoice.discount}
+                  onChange={(e) => setNewInvoice({ ...newInvoice, discount: e.target.value })}
+                />
+                <select
+                  value={newInvoice.discountType}
+                  onChange={(e) => setNewInvoice({ ...newInvoice, discountType: e.target.value })}
+                >
+                  <option value="%">%</option>
+                  <option value="fixed">₹</option>
+                </select>
               </div>
             </div>
             <div className="total-row">
-              <span>CGST (9%):</span>
-              <span>₹1,080.00</span>
-            </div>
-            <div className="total-row">
-              <span>SGST (9%):</span>
-              <span>₹1,080.00</span>
+              <span>Total Tax (GST):</span>
+              <span>₹{totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="total-row grand-total">
-              <span>Total Amount:</span>
-              <span className="rainbow-text">₹14,160.00</span>
+              <span>Grand Total:</span>
+              <span className="rainbow-text">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
@@ -319,121 +716,263 @@ export default function InvoiceManagement({ onBack }) {
     </div>
   );
 
-  const renderInvoicePreview = () => (
-    <div className="inv-preview-view fade-in">
-      <div className="inv-header">
-        <div>
-          <button className="back-btn" onClick={() => setActiveView('dashboard')}>← Back to Invoices</button>
-          <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
-            <h2 className="inv-title">INV-2026-001</h2>
-            <span className="status-badge paid">Paid</span>
+  const renderInvoicePreview = () => {
+    const inv = selectedInvoice || invoices[0] || {};
+    const invId = inv.invoiceNumber || inv.id || 'INV-PREVIEW';
+    const custName = inv.customerName || inv.customer || inv.clientName || 'Cash Sale';
+    const custPhone = inv.customerPhone || '';
+    const custGstin = inv.customerGstin || '';
+    const dateStr = inv.date ? new Date(inv.date).toLocaleDateString() : new Date().toLocaleDateString();
+    const dueStr = inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : dateStr;
+    const invItems = inv.items && inv.items.length > 0 ? inv.items : [
+      { name: 'Standard Item', qty: 1, rate: inv.grandTotal || inv.amount || 0, amount: inv.grandTotal || inv.amount || 0 }
+    ];
+    const totalAmt = inv.grandTotal || inv.amount || 0;
+    const sub = inv.subtotal || (totalAmt * 0.84);
+    const taxAmt = inv.totalTax || (totalAmt - sub);
+    const st = inv.paymentStatus || inv.status || 'Paid';
+    const balance = inv.balanceAmount !== undefined ? inv.balanceAmount : (st === 'Paid' ? 0 : totalAmt);
+
+    return (
+      <div className="inv-preview-view fade-in">
+        <div className="inv-header">
+          <div>
+            <button className="back-btn" onClick={() => setActiveView('dashboard')}>← Back to Invoices</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <h2 className="inv-title">{invId}</h2>
+              <span className={`status-badge ${st.toLowerCase()}`}>{st}</span>
+              {balance > 0 && (
+                <span className="status-badge warning">Balance Due: ₹{balance.toLocaleString('en-IN')}</span>
+              )}
+            </div>
+          </div>
+          <div className="header-actions">
+            <select
+              value={activeTemplate}
+              onChange={(e) => setActiveTemplate(e.target.value)}
+              className="btn-secondary"
+              style={{ padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+            >
+              <option value="modern">A4 Modern Theme (Indigo)</option>
+              <option value="corporate">A4 Corporate Blue</option>
+              <option value="minimal">A5 Clean Minimal (Teal)</option>
+              <option value="thermal">POS Thermal Receipt</option>
+            </select>
+            {balance > 0 && (
+              <button className="btn-primary" onClick={() => { setPaymentAmount(balance); setShowPaymentModal(true); }}>
+                <DollarSign size={16} /> Record Payment
+              </button>
+            )}
+            <button className="btn-secondary" onClick={() => window.print()} title="Print Document">
+              <Printer size={16} /> Print / Save PDF
+            </button>
+            <button className="btn-secondary" onClick={() => handleWhatsAppShare(inv)}>
+              <Share2 size={16} /> WhatsApp
+            </button>
           </div>
         </div>
-        <div className="header-actions">
-          <button className="btn-secondary"><Edit size={16} /> Edit</button>
-          <button className="btn-secondary"><Copy size={16} /> Duplicate</button>
-          <button className="btn-secondary"><Download size={16} /> PDF</button>
-          <button className="btn-primary rainbow-bg"><Mail size={16} /> Send Email</button>
+
+        {/* Invoice Paper Document for Print / Export */}
+        <div className={`invoice-paper template-${activeTemplate}`}>
+          {activeTemplate === 'thermal' ? (
+            <div className="thermal-receipt-layout" style={{ maxWidth: '320px', margin: '0 auto', fontFamily: 'monospace', padding: '1rem', background: '#fff', color: '#000' }}>
+              <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '0.5rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem' }}>YOURBILL SMART POS</h3>
+                <p style={{ margin: '4px 0', fontSize: '0.8rem' }}>101, Tech Park, Corporate Blvd</p>
+                <p style={{ margin: '4px 0', fontSize: '0.8rem' }}>GSTIN: 27AABCU9603R1ZX</p>
+                <p style={{ margin: '4px 0', fontSize: '0.8rem' }}>Phone: +91 98765 43210</p>
+              </div>
+              <div style={{ padding: '0.5rem 0', fontSize: '0.85rem', borderBottom: '1px dashed #000' }}>
+                <div><strong>INV NO:</strong> {invId}</div>
+                <div><strong>DATE:</strong> {dateStr}</div>
+                <div><strong>CUSTOMER:</strong> {custName}</div>
+                {custPhone && <div><strong>PHONE:</strong> {custPhone}</div>}
+              </div>
+              <table style={{ width: '100%', fontSize: '0.85rem', margin: '0.5rem 0', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px dashed #000' }}>
+                    <th style={{ textAlign: 'left' }}>ITEM</th>
+                    <th style={{ textAlign: 'center' }}>QTY</th>
+                    <th style={{ textAlign: 'right' }}>AMT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invItems.map((it, idx) => (
+                    <tr key={idx}>
+                      <td style={{ textAlign: 'left', padding: '2px 0' }}>{it.name}</td>
+                      <td style={{ textAlign: 'center' }}>{it.qty || 1}</td>
+                      <td style={{ textAlign: 'right' }}>₹{(it.amount || it.total || (it.qty * it.rate)).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ borderTop: '1px dashed #000', paddingTop: '0.5rem', fontSize: '0.9rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Subtotal:</span> <span>₹{sub.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tax (GST):</span> <span>₹{taxAmt.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.1rem', marginTop: '4px' }}>
+                  <span>TOTAL:</span> <span>₹{totalAmt.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                  <span>Status:</span> <span>{st} ({inv.paymentMethod || 'Cash'})</span>
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', marginTop: '1rem', borderTop: '1px dashed #000', paddingTop: '0.5rem', fontSize: '0.75rem' }}>
+                <p>Thank you for your business!</p>
+                <p>Visit again soon!</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="paper-header">
+                <div className="company-details">
+                  <h1 style={{ color: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.8rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                    🏢 Nexus Business Solutions Pvt Ltd
+                  </h1>
+                  <p><strong>GSTIN:</strong> 27AABCU9603R1ZX | <strong>PAN:</strong> AABCU9603R</p>
+                  <p>101, Tech Park, Corporate Boulevard, Mumbai - 400001</p>
+                  <p>Phone: +91 98765 43210 | Email: billing@nexusbiz.com</p>
+                </div>
+                <div className="invoice-title-area">
+                  <h2 style={{ color: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', fontSize: '2.2rem', fontWeight: 'bold' }}>
+                    {inv.type || 'TAX INVOICE'}
+                  </h2>
+                  <div className="meta-info" style={{ textAlign: 'left', marginTop: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.3rem' }}>
+                      <span style={{ minWidth: '90px', color: '#64748b' }}>Invoice No:</span>
+                      <strong>{invId}</strong>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.3rem' }}>
+                      <span style={{ minWidth: '90px', color: '#64748b' }}>Invoice Date:</span>
+                      <span>{dateStr}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.3rem' }}>
+                      <span style={{ minWidth: '90px', color: '#64748b' }}>Due Date:</span>
+                      <span>{dueStr}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="billing-details" style={{ marginTop: '1.5rem' }}>
+                <div style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff', padding: '0.4rem 1rem', display: 'inline-block', borderRadius: '4px 4px 0 0', fontWeight: 'bold' }}>
+                  BILLED TO
+                </div>
+                <div style={{ border: `1px solid ${activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8'}`, padding: '1.2rem', borderRadius: '0 4px 4px 4px', maxWidth: '400px' }}>
+                  <strong style={{ fontSize: '1.1rem', color: '#000' }}>{custName}</strong>
+                  {custPhone && <p style={{ color: '#333', margin: '4px 0' }}>Phone: {custPhone}</p>}
+                  {custGstin && <p style={{ color: '#333', margin: '4px 0' }}>GSTIN: {custGstin}</p>}
+                  <p style={{ color: '#333', margin: '4px 0' }}>Payment Mode: {inv.paymentMethod || 'Cash'}</p>
+                </div>
+              </div>
+
+              <table className="paper-table" style={{ marginTop: '2rem' }}>
+                <thead>
+                  <tr>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>#</th>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>ITEM DESCRIPTION</th>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>HSN</th>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>QTY</th>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>RATE</th>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>TAX RATE</th>
+                    <th style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff' }}>AMOUNT</th>
+                  </tr>
+                </thead>
+                <tbody style={{ color: '#000' }}>
+                  {invItems.map((it, idx) => (
+                    <tr key={idx}>
+                      <td>{idx + 1}</td>
+                      <td style={{ fontWeight: '500' }}>{it.name}</td>
+                      <td>{it.hsnCode || '998311'}</td>
+                      <td>{it.qty || 1}</td>
+                      <td>₹{(it.rate || it.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      <td>{it.taxRate ? `${it.taxRate}%` : '18%'}</td>
+                      <td style={{ fontWeight: 'bold' }}>
+                        ₹{(it.amount || it.total || (it.qty * it.rate)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="paper-footer" style={{ marginTop: '2rem', display: 'flex', justifyContent: 'space-between' }}>
+                <div className="terms-area" style={{ flex: 1, paddingRight: '2rem' }}>
+                  <h3 style={{ textTransform: 'uppercase', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>TERMS & CONDITIONS</h3>
+                  <ol style={{ paddingLeft: '1rem', color: '#64748b', fontSize: '0.85rem', margin: 0 }}>
+                    <li>{inv.terms || 'Payment due within 15 days.'}</li>
+                    <li>Goods once sold are covered under respective manufacturer warranty.</li>
+                  </ol>
+                  <p style={{ marginTop: '1.5rem', color: '#16a34a', fontWeight: 'bold' }}>
+                    {inv.notes || 'Thank you for your business!'}
+                  </p>
+                </div>
+
+                <div className="paper-totals" style={{ width: '320px' }}>
+                  <div className="p-total-row" style={{ border: 'none', padding: '0.4rem 1rem', color: '#000' }}>
+                    <span>Subtotal:</span>
+                    <span>₹{sub.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="p-total-row" style={{ border: 'none', padding: '0.4rem 1rem', color: '#000' }}>
+                    <span>GST (Tax):</span>
+                    <span>₹{taxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="p-total-row p-grand-total" style={{ background: activeTemplate === 'corporate' ? '#1e3a8a' : '#6b21a8', color: '#fff', padding: '0.8rem', margin: 0, border: 'none' }}>
+                    <span>Grand Total:</span>
+                    <span>₹{totalAmt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div style={{ textAlign: 'right', marginTop: '2rem', color: '#000', fontSize: '0.85rem' }}>
+                    <div style={{ display: 'inline-block', borderTop: '1px solid #000', paddingTop: '0.5rem', width: '200px', textAlign: 'center' }}>
+                      Authorized Signatory
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
+
+        {/* Record Payment Modal */}
+        {showPaymentModal && (
+          <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+            <div className="modal-content" style={{ background: 'var(--bg-secondary)', padding: '2rem', borderRadius: '12px', width: '400px', border: '1px solid var(--border-color)' }}>
+              <h3>Record Payment for {invId}</h3>
+              <p style={{ margin: '0.5rem 0 1rem', opacity: 0.8 }}>Customer: {custName}</p>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem' }}>Payment Amount (₹)</label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                />
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem' }}>Payment Method</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI / QR Code</option>
+                  <option value="Card">Debit / Credit Card</option>
+                  <option value="Net Banking">Net Banking / NEFT</option>
+                  <option value="Cheque">Cheque</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button className="btn-secondary" onClick={() => setShowPaymentModal(false)}>Cancel</button>
+                <button className="btn-primary" onClick={handleRecordPayment}>Confirm Payment</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      <div className="invoice-paper">
-        <div className="paper-header">
-          <div className="company-details">
-            <h1 className="rainbow-text logo">NexusBill</h1>
-            <p>123 Business Avenue, Tech Park</p>
-            <p>Mumbai, Maharashtra, 400001</p>
-            <p>GSTIN: 27AADCB2230M1Z5</p>
-          </div>
-          <div className="invoice-title-area">
-            <h2>TAX INVOICE</h2>
-            <div className="meta-info">
-              <div><strong>Invoice #:</strong> INV-2026-001</div>
-              <div><strong>Date:</strong> 15 Jan 2026</div>
-              <div><strong>Due Date:</strong> 30 Jan 2026</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="billing-details">
-          <div className="bill-to">
-            <h3>Bill To:</h3>
-            <strong>Acme Corp</strong>
-            <p>456 Enterprise Street, Block B</p>
-            <p>Pune, Maharashtra, 411001</p>
-            <p>GSTIN: 27ABCDE1234F1Z5</p>
-          </div>
-          <div className="payment-status-stamp paid-stamp">
-            PAID
-          </div>
-        </div>
-
-        <table className="paper-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Item & Description</th>
-              <th>HSN/SAC</th>
-              <th>Qty</th>
-              <th>Rate</th>
-              <th>Tax</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>1</td>
-              <td>
-                <strong>Website Redesign</strong>
-                <p className="item-desc">Corporate website redesign with e-commerce</p>
-              </td>
-              <td>998311</td>
-              <td>1</td>
-              <td>₹10,593.22</td>
-              <td>18%</td>
-              <td>₹12,500.00</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div className="paper-footer">
-          <div className="bank-details">
-            <h3>Bank Details</h3>
-            <p><strong>Bank:</strong> HDFC Bank</p>
-            <p><strong>Account Name:</strong> NexusBill Technologies</p>
-            <p><strong>Account No:</strong> 50200012345678</p>
-            <p><strong>IFSC Code:</strong> HDFC0001234</p>
-          </div>
-          
-          <div className="paper-totals">
-            <div className="p-total-row">
-              <span>Subtotal:</span>
-              <span>₹10,593.22</span>
-            </div>
-            <div className="p-total-row">
-              <span>CGST (9%):</span>
-              <span>₹953.39</span>
-            </div>
-            <div className="p-total-row">
-              <span>SGST (9%):</span>
-              <span>₹953.39</span>
-            </div>
-            <div className="p-total-row p-grand-total">
-              <span>Total:</span>
-              <span>₹12,500.00</span>
-            </div>
-            <p className="amount-words">Amount in words: Twelve Thousand Five Hundred Rupees Only</p>
-          </div>
-        </div>
-
-        <div className="terms-area">
-          <h3>Terms & Conditions</h3>
-          <p>1. Please quote invoice number when remitting funds.</p>
-          <p>2. Subject to Mumbai jurisdiction.</p>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="invoice-management-wrapper">

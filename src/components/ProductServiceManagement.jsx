@@ -1,65 +1,133 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Package, Tags, Barcode, Layers, Box, Settings, DollarSign, 
   Upload, Download, Search, Filter, MoreVertical, Edit, Trash2, 
-  ImageIcon, CheckCircle, AlertCircle, TrendingUp, Plus
+  ImageIcon, CheckCircle, AlertCircle, TrendingUp, Plus, X, Save
 } from 'lucide-react';
 import './ProductServiceManagement.css';
-
-const MOCK_PRODUCTS = [
-  {
-    id: 'PRD-1001',
-    name: 'Samsung Galaxy S24 Ultra',
-    sku: 'MOB-SAM-S24U-BLK',
-    category: 'Mobile',
-    type: 'Physical',
-    stock: 45,
-    minStock: 10,
-    price: 129999,
-    status: 'Active',
-    image: '📱'
-  },
-  {
-    id: 'PRD-1002',
-    name: 'Website Development Package',
-    sku: 'SRV-WEB-DEV-01',
-    category: 'Software',
-    type: 'Service',
-    stock: null,
-    minStock: null,
-    price: 49999,
-    status: 'Active',
-    image: '💻'
-  },
-  {
-    id: 'PRD-1003',
-    name: 'Ergonomic Office Chair',
-    sku: 'FUR-OFF-CHR-GRY',
-    category: 'Furniture',
-    type: 'Physical',
-    stock: 2,
-    minStock: 5,
-    price: 8500,
-    status: 'Low Stock',
-    image: '💺'
-  },
-  {
-    id: 'PRD-1004',
-    name: 'Premium Cloud Hosting (1 Yr)',
-    sku: 'SUB-CLD-HST-1Y',
-    category: 'Hosting',
-    type: 'Subscription',
-    stock: null,
-    minStock: null,
-    price: 12000,
-    status: 'Active',
-    image: '☁️'
-  }
-];
+import { productApi } from '../api';
 
 export default function ProductServiceManagement({ onBack }) {
-  const [activeView, setActiveView] = useState('dashboard'); // dashboard, catalog, add_product, categories, inventory
-  const [products] = useState(MOCK_PRODUCTS);
+  const [activeView, setActiveView] = useState('dashboard'); // dashboard, add_product, categories, inventory
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('All');
+
+  // Form states
+  const [formTab, setFormTab] = useState('basic');
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '', type: 'Physical Product', category: 'Electronics', brand: '', hsnCode: '', description: '',
+    price: 0, costPrice: 0, mrp: 0, taxRate: 'GST 18%',
+    sku: '', barcode: '', stock: 0, minStock: 5, image: '📦'
+  });
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const data = await productApi.getAll();
+      setProducts(data || []);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleOpenAdd = () => {
+    setIsEditing(false);
+    setSelectedProduct(null);
+    setFormData({
+      name: '', type: 'Physical Product', category: 'Electronics', brand: '', hsnCode: '', description: '',
+      price: 0, costPrice: 0, mrp: 0, taxRate: 'GST 18%',
+      sku: '', barcode: '', stock: 0, minStock: 5, image: '📦'
+    });
+    setFormTab('basic');
+    setActiveView('add_product');
+  };
+
+  const handleOpenEdit = (product) => {
+    setIsEditing(true);
+    setSelectedProduct(product);
+    setFormData({
+      name: product.name, type: product.type, category: product.category, brand: product.brand || '', hsnCode: product.hsnCode || '', description: product.description || '',
+      price: product.price, costPrice: product.costPrice || 0, mrp: product.mrp || 0, taxRate: product.taxRate || 'GST 18%',
+      sku: product.sku || '', barcode: product.barcode || '', stock: product.stock, minStock: product.minStock, image: product.image || '📦'
+    });
+    setFormTab('basic');
+    setActiveView('add_product');
+  };
+
+  const handleSaveProduct = async (e) => {
+    e.preventDefault();
+    
+    const payload = {
+      ...formData,
+      price: Number(formData.price),
+      costPrice: Number(formData.costPrice),
+      mrp: Number(formData.mrp),
+      stock: Number(formData.stock),
+      minStock: Number(formData.minStock)
+    };
+
+    try {
+      if (isEditing) {
+        await productApi.update(selectedProduct._id, payload);
+      } else {
+        await productApi.create(payload);
+      }
+      
+      await fetchProducts();
+      setActiveView('dashboard');
+    } catch (error) {
+      console.error("Error saving product:", error);
+      alert(`Error saving product: ${error.message}`);
+    }
+  };
+
+  const handleDeleteProduct = async (id) => {
+    if(!window.confirm('Are you sure you want to delete this product?')) return;
+    try {
+      await productApi.delete(id);
+      await fetchProducts();
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      alert(`Error deleting product: ${error.message}`);
+    }
+  };
+
+  // Filtering
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (p.productId && p.productId.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesType = filterType === 'All' || p.type === filterType;
+    return matchesSearch && matchesType;
+  });
+
+  // Metrics
+  const totalProducts = products.length;
+  const lowStockCount = products.filter(p => p.type === 'Physical Product' && p.stock <= p.minStock).length;
+  const totalInventoryValue = products.reduce((acc, p) => p.type === 'Physical Product' ? acc + (p.price * p.stock) : acc, 0);
+  
+  const generateSKU = () => {
+    const prefix = formData.category.substring(0, 3).toUpperCase();
+    const namePart = formData.name.substring(0, 3).toUpperCase() || 'XXX';
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    setFormData(prev => ({...prev, sku: `${prefix}-${namePart}-${rand}`}));
+  };
 
   const renderDashboard = () => (
     <div className="psm-dashboard fade-in">
@@ -73,7 +141,7 @@ export default function ProductServiceManagement({ onBack }) {
           <button className="btn-secondary" onClick={() => setActiveView('categories')}>
             <Layers size={18} /> Categories
           </button>
-          <button className="btn-primary rainbow-bg" onClick={() => setActiveView('add_product')}>
+          <button className="btn-primary rainbow-bg" onClick={handleOpenAdd}>
             <Plus size={18} /> Add Product/Service
           </button>
         </div>
@@ -83,16 +151,16 @@ export default function ProductServiceManagement({ onBack }) {
         <div className="metric-card">
           <div className="metric-icon bg-purple"><Package size={24} /></div>
           <div className="metric-info">
-            <h4>Total Products/Services</h4>
-            <div className="metric-value">4,821</div>
-            <div className="metric-trend positive">+32 this week</div>
+            <h4>Total Catalog Items</h4>
+            <div className="metric-value">{totalProducts}</div>
+            <div className="metric-trend positive">Real-time sync</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-orange"><AlertCircle size={24} /></div>
           <div className="metric-info">
             <h4>Low Stock Items</h4>
-            <div className="metric-value">24</div>
+            <div className="metric-value">{lowStockCount}</div>
             <div className="metric-trend negative">Requires attention</div>
           </div>
         </div>
@@ -100,16 +168,16 @@ export default function ProductServiceManagement({ onBack }) {
           <div className="metric-icon bg-green"><DollarSign size={24} /></div>
           <div className="metric-info">
             <h4>Total Inventory Value</h4>
-            <div className="metric-value">₹1.8M</div>
-            <div className="metric-trend">Across 3 warehouses</div>
+            <div className="metric-value">₹{totalInventoryValue.toLocaleString()}</div>
+            <div className="metric-trend">Expected Sales Value</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-blue"><TrendingUp size={24} /></div>
           <div className="metric-info">
-            <h4>Top Selling Category</h4>
-            <div className="metric-value text-medium">Electronics</div>
-            <div className="metric-trend positive">42% of sales</div>
+            <h4>Database Status</h4>
+            <div className="metric-value text-medium">Connected</div>
+            <div className="metric-trend positive">MongoDB Live</div>
           </div>
         </div>
       </div>
@@ -117,18 +185,16 @@ export default function ProductServiceManagement({ onBack }) {
       <div className="psm-section">
         <div className="section-header-row">
           <div className="tabs-simple">
-            <button className={`tab-simple ${activeView === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveView('dashboard')}>All Items</button>
-            <button className="tab-simple" onClick={() => setActiveView('inventory')}>Stock Tracking</button>
-            <button className="tab-simple">Price Lists</button>
+            <button className={`tab-simple ${filterType === 'All' ? 'active' : ''}`} onClick={() => setFilterType('All')}>All Items</button>
+            <button className={`tab-simple ${filterType === 'Physical Product' ? 'active' : ''}`} onClick={() => setFilterType('Physical Product')}>Physical</button>
+            <button className={`tab-simple ${filterType === 'Service' ? 'active' : ''}`} onClick={() => setFilterType('Service')}>Services</button>
           </div>
           <div className="search-filter">
             <div className="search-box">
               <Search size={18} />
-              <input type="text" placeholder="Search by name, SKU or barcode..." />
+              <input type="text" placeholder="Search by name, SKU..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            <button className="btn-secondary"><Filter size={18} /> Filter</button>
-            <button className="btn-secondary" title="Import/Export"><Upload size={18} /></button>
-            <button className="btn-secondary" title="Print Barcodes"><Barcode size={18} /></button>
+            <button className="btn-secondary" onClick={() => {setSearchTerm(''); setFilterType('All');}}>Clear</button>
           </div>
         </div>
         
@@ -146,47 +212,56 @@ export default function ProductServiceManagement({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              {products.map(prod => (
-                <tr key={prod.id} className="clickable-row">
-                  <td>
-                    <div className="product-cell">
-                      <div className="product-thumb">{prod.image}</div>
-                      <div>
-                        <strong>{prod.name}</strong>
-                        <span className="sub-text">{prod.id}</span>
+              {loading ? (
+                <tr><td colSpan="7" style={{textAlign:'center', padding:'2rem'}}>Loading catalog...</td></tr>
+              ) : filteredProducts.length === 0 ? (
+                <tr><td colSpan="7" style={{textAlign:'center', padding:'2rem', color:'#64748b'}}>No products found. Add your first item.</td></tr>
+              ) : (
+                filteredProducts.map(prod => (
+                  <tr key={prod._id} className="clickable-row">
+                    <td>
+                      <div className="product-cell">
+                        <div className="product-thumb">{prod.image}</div>
+                        <div>
+                          <strong>{prod.name}</strong>
+                          <span className="sub-text">{prod.productId}</span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="code-cell">
-                      <span className="sku-badge">{prod.sku}</span>
-                      <span className="type-badge">{prod.type}</span>
-                    </div>
-                  </td>
-                  <td>{prod.category}</td>
-                  <td>
-                    <strong>₹{prod.price.toLocaleString()}</strong>
-                  </td>
-                  <td>
-                    {prod.type === 'Service' || prod.type === 'Subscription' ? (
-                      <span className="sub-text">N/A (Non-inventory)</span>
-                    ) : (
-                      <div className="stock-cell">
-                        <span className={`stock-count ${prod.stock <= prod.minStock ? 'text-orange' : 'text-green'}`}>
-                          {prod.stock} in stock
-                        </span>
-                        {prod.stock <= prod.minStock && <span className="low-stock-warn">Low</span>}
+                    </td>
+                    <td>
+                      <div className="code-cell">
+                        <span className="sku-badge">{prod.sku || 'No SKU'}</span>
+                        <span className="type-badge">{prod.type}</span>
                       </div>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`status-badge ${prod.status.toLowerCase().replace(' ', '-')}`}>{prod.status}</span>
-                  </td>
-                  <td>
-                    <button className="action-btn"><MoreVertical size={18} /></button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>{prod.category}</td>
+                    <td>
+                      <strong>₹{prod.price.toLocaleString()}</strong>
+                    </td>
+                    <td>
+                      {prod.type === 'Service' || prod.type === 'Subscription' ? (
+                        <span className="sub-text">N/A (Non-inventory)</span>
+                      ) : (
+                        <div className="stock-cell">
+                          <span className={`stock-count ${prod.stock <= prod.minStock ? 'text-orange' : 'text-green'}`}>
+                            {prod.stock} in stock
+                          </span>
+                          {prod.stock <= prod.minStock && <span className="low-stock-warn">Low</span>}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`status-badge ${prod.status.toLowerCase().replace(/ /g, '-')}`}>{prod.status}</span>
+                    </td>
+                    <td>
+                      <div style={{display:'flex', gap:'0.5rem'}}>
+                         <button className="action-btn" onClick={() => handleOpenEdit(prod)}><Edit size={16} /></button>
+                         <button className="action-btn" onClick={() => handleDeleteProduct(prod._id)} style={{color:'#ef4444'}}><Trash2 size={16} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -199,185 +274,164 @@ export default function ProductServiceManagement({ onBack }) {
       <div className="psm-header">
         <div>
           <button className="back-btn" onClick={() => setActiveView('dashboard')}>← Back to Catalog</button>
-          <h2 className="psm-title">Add New Item</h2>
-          <p className="psm-subtitle">Create a physical product, digital good, service, or bundle</p>
-        </div>
-        <div className="header-actions">
-          <button className="btn-secondary" onClick={() => setActiveView('dashboard')}>Cancel</button>
-          <button className="btn-primary rainbow-bg" onClick={() => setActiveView('dashboard')}>Save Product</button>
+          <h2 className="psm-title">{isEditing ? 'Edit Item' : 'Add New Item'}</h2>
+          <p className="psm-subtitle">{isEditing ? 'Update product details' : 'Create a physical product, digital good, service, or bundle'}</p>
         </div>
       </div>
 
-      <div className="form-layout">
+      <form className="form-layout" onSubmit={handleSaveProduct}>
         <div className="form-sidebar">
-          <button className="form-tab active"><Package size={16}/> Basic Details</button>
-          <button className="form-tab"><DollarSign size={16}/> Pricing & Tax</button>
-          <button className="form-tab"><Box size={16}/> Inventory & Barcodes</button>
-          <button className="form-tab"><Layers size={16}/> Variants & SKUs</button>
-          <button className="form-tab"><ImageIcon size={16}/> Images</button>
+          <button type="button" className={`form-tab ${formTab === 'basic' ? 'active':''}`} onClick={()=>setFormTab('basic')}><Package size={16}/> Basic Details</button>
+          <button type="button" className={`form-tab ${formTab === 'pricing' ? 'active':''}`} onClick={()=>setFormTab('pricing')}><DollarSign size={16}/> Pricing & Tax</button>
+          <button type="button" className={`form-tab ${formTab === 'inventory' ? 'active':''}`} onClick={()=>setFormTab('inventory')}><Box size={16}/> Inventory & Barcodes</button>
+          <button type="button" className={`form-tab ${formTab === 'images' ? 'active':''}`} onClick={()=>setFormTab('images')}><ImageIcon size={16}/> Image Icon</button>
         </div>
 
         <div className="form-content">
-          <div className="form-section">
-            <h3>Basic Information</h3>
-            <div className="form-grid">
-              <div className="input-group full-span">
-                <label>Product/Service Name *</label>
-                <input type="text" placeholder="e.g. Wireless Noise Cancelling Headphones" />
-              </div>
-              <div className="input-group">
-                <label>Product Type</label>
-                <select>
-                  <option>Physical Product</option>
-                  <option>Digital Product</option>
-                  <option>Service</option>
-                  <option>Subscription</option>
-                  <option>Bundle/Combo</option>
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Category</label>
-                <select>
-                  <option>Select Category...</option>
-                  <option>Electronics</option>
-                  <option>Software</option>
-                  <option>Services</option>
-                </select>
-              </div>
-              <div className="input-group">
-                <label>Brand</label>
-                <input type="text" placeholder="e.g. Sony" />
-              </div>
-              <div className="input-group">
-                <label>Product Code / HSN</label>
-                <input type="text" placeholder="e.g. 85183000" />
-              </div>
-              <div className="input-group full-span">
-                <label>Description</label>
-                <textarea rows="4" placeholder="Detailed product description..."></textarea>
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h3>Pricing & Tax</h3>
-            <div className="form-grid">
-              <div className="input-group">
-                <label>Selling Price (₹) *</label>
-                <input type="number" placeholder="0.00" />
-              </div>
-              <div className="input-group">
-                <label>Cost Price (₹)</label>
-                <input type="number" placeholder="0.00" />
-              </div>
-              <div className="input-group">
-                <label>MRP (₹)</label>
-                <input type="number" placeholder="0.00" />
-              </div>
-              <div className="input-group">
-                <label>Tax Rate (%)</label>
-                <select>
-                  <option>GST 18%</option>
-                  <option>GST 12%</option>
-                  <option>GST 5%</option>
-                  <option>Tax Exempt</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h3>Inventory & Barcodes</h3>
-            <div className="form-grid">
-              <div className="input-group">
-                <label>SKU</label>
-                <div className="input-with-action">
-                  <input type="text" placeholder="Auto-generated if empty" />
-                  <button className="inline-btn">Generate</button>
+          {formTab === 'basic' && (
+            <div className="form-section fade-in">
+              <h3>Basic Information</h3>
+              <div className="form-grid">
+                <div className="input-group full-span">
+                  <label>Product/Service Name *</label>
+                  <input type="text" name="name" required value={formData.name} onChange={handleInputChange} placeholder="e.g. Wireless Noise Cancelling Headphones" />
+                </div>
+                <div className="input-group">
+                  <label>Product Type</label>
+                  <select name="type" value={formData.type} onChange={handleInputChange}>
+                    <option value="Physical Product">Physical Product</option>
+                    <option value="Digital Product">Digital Product</option>
+                    <option value="Service">Service</option>
+                    <option value="Subscription">Subscription</option>
+                    <option value="Bundle/Combo">Bundle/Combo</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Category</label>
+                  <select name="category" value={formData.category} onChange={handleInputChange}>
+                    <option value="Uncategorized">Select Category...</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Software">Software</option>
+                    <option value="Services">Services</option>
+                    <option value="Furniture">Furniture</option>
+                    <option value="Hosting">Hosting</option>
+                    <option value="Mobile">Mobile</option>
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Brand</label>
+                  <input type="text" name="brand" value={formData.brand} onChange={handleInputChange} placeholder="e.g. Sony" />
+                </div>
+                <div className="input-group">
+                  <label>Product Code / HSN</label>
+                  <input type="text" name="hsnCode" value={formData.hsnCode} onChange={handleInputChange} placeholder="e.g. 85183000" />
+                </div>
+                <div className="input-group full-span">
+                  <label>Description</label>
+                  <textarea name="description" rows="4" value={formData.description} onChange={handleInputChange} placeholder="Detailed product description..."></textarea>
                 </div>
               </div>
-              <div className="input-group">
-                <label>Barcode (EAN/UPC)</label>
-                <div className="input-with-action">
-                  <input type="text" placeholder="Scan or enter barcode" />
-                  <button className="inline-btn"><Barcode size={16}/></button>
+            </div>
+          )}
+
+          {formTab === 'pricing' && (
+            <div className="form-section fade-in">
+              <h3>Pricing & Tax</h3>
+              <div className="form-grid">
+                <div className="input-group">
+                  <label>Selling Price (₹) *</label>
+                  <input type="number" required name="price" value={formData.price} onChange={handleInputChange} placeholder="0.00" />
                 </div>
-              </div>
-              <div className="input-group">
-                <label>Opening Stock</label>
-                <input type="number" placeholder="0" />
-              </div>
-              <div className="input-group">
-                <label>Low Stock Alert Limit</label>
-                <input type="number" placeholder="5" />
+                <div className="input-group">
+                  <label>Cost Price (₹)</label>
+                  <input type="number" name="costPrice" value={formData.costPrice} onChange={handleInputChange} placeholder="0.00" />
+                </div>
+                <div className="input-group">
+                  <label>MRP (₹)</label>
+                  <input type="number" name="mrp" value={formData.mrp} onChange={handleInputChange} placeholder="0.00" />
+                </div>
+                <div className="input-group">
+                  <label>Tax Rate (%)</label>
+                  <select name="taxRate" value={formData.taxRate} onChange={handleInputChange}>
+                    <option value="GST 18%">GST 18%</option>
+                    <option value="GST 12%">GST 12%</option>
+                    <option value="GST 5%">GST 5%</option>
+                    <option value="Tax Exempt">Tax Exempt</option>
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="form-section">
-            <h3>Variants & SKUs</h3>
-            <div className="form-grid">
-              <div className="input-group full-span">
-                <label>Add Variants (e.g., Color, Size)</label>
-                <div className="input-with-action">
-                  <input type="text" placeholder="e.g., Size" />
-                  <input type="text" placeholder="e.g., S, M, L, XL (comma separated)" />
-                  <button className="inline-btn">Add Option</button>
+          {formTab === 'inventory' && (
+            <div className="form-section fade-in">
+              <h3>Inventory & Barcodes</h3>
+              {formData.type === 'Service' || formData.type === 'Subscription' ? (
+                <div style={{padding: '2rem', background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', borderRadius: '8px', textAlign: 'center'}}>
+                  <AlertCircle size={32} style={{margin: '0 auto 1rem'}}/>
+                  <h4>Inventory Disabled</h4>
+                  <p>Stock tracking is not applicable for Services or Subscriptions.</p>
                 </div>
-              </div>
-              <div className="input-group full-span">
-                <table className="psm-table">
-                  <thead>
-                    <tr>
-                      <th>Variant</th>
-                      <th>SKU</th>
-                      <th>Price</th>
-                      <th>Stock</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Black / M</td>
-                      <td><input type="text" defaultValue="TS-BLK-M" style={{width: '120px', padding: '0.4rem'}}/></td>
-                      <td><input type="number" defaultValue="499" style={{width: '100px', padding: '0.4rem'}}/></td>
-                      <td><input type="number" defaultValue="50" style={{width: '80px', padding: '0.4rem'}}/></td>
-                      <td><button className="action-btn"><Trash2 size={16}/></button></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section">
-            <h3>Product Images</h3>
-            <div className="form-grid">
-              <div className="input-group full-span">
-                <div className="image-upload-area">
-                  <Upload size={32} />
-                  <p>Drag and drop images here or click to browse</p>
-                  <span className="sub-text">Supported formats: JPG, PNG, WEBP (Max 5MB)</span>
-                  <button className="btn-secondary" style={{marginTop: '1rem'}}>Select Files</button>
-                </div>
-              </div>
-              <div className="input-group full-span">
-                <div className="image-gallery">
-                  <div className="gallery-item primary">
-                    <div className="img-placeholder">📱</div>
-                    <span className="badge">Primary</span>
-                    <button className="remove-img"><Trash2 size={14}/></button>
+              ) : (
+                <div className="form-grid">
+                  <div className="input-group">
+                    <label>SKU</label>
+                    <div className="input-with-action">
+                      <input type="text" name="sku" value={formData.sku} onChange={handleInputChange} placeholder="Auto-generated if empty" />
+                      <button type="button" className="inline-btn" onClick={generateSKU}>Generate</button>
+                    </div>
                   </div>
-                  <div className="gallery-item">
-                    <div className="img-placeholder">📱 (Side)</div>
-                    <button className="remove-img"><Trash2 size={14}/></button>
+                  <div className="input-group">
+                    <label>Barcode (EAN/UPC)</label>
+                    <div className="input-with-action">
+                      <input type="text" name="barcode" value={formData.barcode} onChange={handleInputChange} placeholder="Scan or enter barcode" />
+                      <button type="button" className="inline-btn"><Barcode size={16}/></button>
+                    </div>
+                  </div>
+                  <div className="input-group">
+                    <label>Current Stock</label>
+                    <input type="number" name="stock" value={formData.stock} onChange={handleInputChange} placeholder="0" />
+                  </div>
+                  <div className="input-group">
+                    <label>Low Stock Alert Limit</label>
+                    <input type="number" name="minStock" value={formData.minStock} onChange={handleInputChange} placeholder="5" />
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {formTab === 'images' && (
+            <div className="form-section fade-in">
+              <h3>Product Icon (Emoji)</h3>
+              <p className="sub-text" style={{marginBottom:'1rem'}}>For simplicity, select an emoji to represent this product.</p>
+              <div className="form-grid">
+                <div className="input-group">
+                  <label>Select Emoji Icon</label>
+                  <select name="image" value={formData.image} onChange={handleInputChange} style={{fontSize: '2rem', height: '60px'}}>
+                    <option value="📦">📦 Box</option>
+                    <option value="📱">📱 Mobile</option>
+                    <option value="💻">💻 Laptop</option>
+                    <option value="🖥️">🖥️ Desktop</option>
+                    <option value="💺">💺 Furniture</option>
+                    <option value="☁️">☁️ Cloud</option>
+                    <option value="🔧">🔧 Service/Repair</option>
+                    <option value="👕">👕 Apparel</option>
+                    <option value="🍔">🍔 Food</option>
+                    <option value="📚">📚 Book</option>
+                    <option value="💊">💊 Medicine</option>
+                  </select>
+                </div>
               </div>
             </div>
+          )}
+          
+          <div style={{marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'flex-end', padding: '1rem', background: 'var(--bg-color)', borderRadius: '12px', border: '1px solid var(--border-color)'}}>
+            <button type="button" className="btn-secondary" onClick={() => setActiveView('dashboard')}><X size={16}/> Cancel</button>
+            <button type="submit" className="btn-primary rainbow-bg"><Save size={16}/> {isEditing ? 'Save Changes' : 'Create Item'}</button>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 
@@ -430,109 +484,12 @@ export default function ProductServiceManagement({ onBack }) {
         </div>
         
         <div className="category-details form-section">
-          <div className="section-header-row">
-            <h3>Edit Category: Mobile Phones</h3>
-            <button className="btn-danger"><Trash2 size={14}/> Delete</button>
-          </div>
-          <div className="form-grid">
-            <div className="input-group">
-              <label>Category Name</label>
-              <input type="text" defaultValue="Mobile Phones" />
-            </div>
-            <div className="input-group">
-              <label>Category Code</label>
-              <input type="text" defaultValue="CAT-ELEC-MOB" />
-            </div>
-            <div className="input-group">
-              <label>Parent Category</label>
-              <select defaultValue="Electronics">
-                <option>None (Root)</option>
-                <option>Electronics</option>
-                <option>Clothing & Apparel</option>
-              </select>
-            </div>
-            <div className="input-group">
-              <label>Status</label>
-              <select defaultValue="Active">
-                <option>Active</option>
-                <option>Inactive</option>
-              </select>
-            </div>
-            <div className="input-group full-span">
-              <button className="btn-primary">Save Changes</button>
-            </div>
+          <div style={{textAlign:'center', padding:'3rem', color:'var(--text-secondary)'}}>
+            <Layers size={48} style={{margin:'0 auto 1rem', opacity: 0.2}} />
+            <h4>Category Management Active</h4>
+            <p>Select a category from the left tree to edit its properties, or create a new one.</p>
           </div>
         </div>
-      </div>
-    </div>
-  );
-
-  const renderInventory = () => (
-    <div className="psm-inventory-view fade-in">
-      <div className="psm-header">
-        <div>
-          <button className="back-btn" onClick={() => setActiveView('dashboard')}>← Back to Catalog</button>
-          <h2 className="psm-title">Stock Tracking & Ledger</h2>
-          <p className="psm-subtitle">Real-time inventory movements, adjustments, and audit logs</p>
-        </div>
-        <div className="header-actions">
-          <button className="btn-secondary">Warehouse Transfer</button>
-          <button className="btn-primary rainbow-bg"><Plus size={18} /> Stock Adjustment</button>
-        </div>
-      </div>
-      
-      <div className="table-container">
-        <table className="psm-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Product</th>
-              <th>Transaction</th>
-              <th>Qty In</th>
-              <th>Qty Out</th>
-              <th>Balance</th>
-              <th>Reference</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="clickable-row">
-              <td>Jan 03, 2026</td>
-              <td>
-                <strong>Samsung Galaxy S24 Ultra</strong>
-                <span className="sub-text">MOB-SAM-S24U-BLK</span>
-              </td>
-              <td><span className="type-badge">Sale</span></td>
-              <td>0</td>
-              <td><span className="text-orange">2</span></td>
-              <td><strong>45</strong></td>
-              <td>INV-2026-001</td>
-            </tr>
-            <tr className="clickable-row">
-              <td>Jan 01, 2026</td>
-              <td>
-                <strong>Samsung Galaxy S24 Ultra</strong>
-                <span className="sub-text">MOB-SAM-S24U-BLK</span>
-              </td>
-              <td><span className="type-badge">Purchase</span></td>
-              <td><span className="text-green">47</span></td>
-              <td>0</td>
-              <td><strong>47</strong></td>
-              <td>PO-2025-099</td>
-            </tr>
-            <tr className="clickable-row">
-              <td>Dec 28, 2025</td>
-              <td>
-                <strong>Ergonomic Office Chair</strong>
-                <span className="sub-text">FUR-OFF-CHR-GRY</span>
-              </td>
-              <td><span className="type-badge" style={{background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444'}}>Damage</span></td>
-              <td>0</td>
-              <td><span className="text-orange">1</span></td>
-              <td><strong>2</strong></td>
-              <td>ADJ-2025-042</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </div>
   );
@@ -542,7 +499,6 @@ export default function ProductServiceManagement({ onBack }) {
       {activeView === 'dashboard' && renderDashboard()}
       {activeView === 'add_product' && renderAddProduct()}
       {activeView === 'categories' && renderCategories()}
-      {activeView === 'inventory' && renderInventory()}
     </div>
   );
 }

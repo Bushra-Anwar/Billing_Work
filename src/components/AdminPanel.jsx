@@ -12,53 +12,52 @@ export default function AdminPanel({ onBack }) {
   const renderDashboard = () => (
     <div className="ap-view fade-in">
       <div className="ap-header">
-        <div>
-          <button className="back-btn" onClick={onBack}>← Back to Home</button>
+        <div className="ap-title-area">
           <h2 className="ap-title">Admin Control Panel</h2>
           <p className="ap-subtitle">System health, global settings, security, and backup management</p>
         </div>
-        <button className="btn-primary rainbow-bg"><RefreshCw size={16} /> Refresh Metrics</button>
+        <button className="btn-refresh-metrics"><RefreshCw size={16} /> Refresh Metrics</button>
       </div>
 
-      <div className="grid-4">
-        <div className="metric-card">
-          <div className="metric-icon bg-green"><Activity size={24}/></div>
-          <div className="metric-info">
+      <div className="ap-grid-4">
+        <div className="ap-metric-card">
+          <div className="ap-metric-icon bg-cyan"><Activity size={24}/></div>
+          <div className="ap-metric-info">
             <h4>System Health</h4>
-            <div className="metric-value">100%</div>
-            <div className="metric-trend positive">All services operational</div>
+            <div className="ap-metric-value">100%</div>
+            <div className="ap-metric-trend text-cyan">All services operational</div>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon bg-blue"><Users size={24}/></div>
-          <div className="metric-info">
+        <div className="ap-metric-card">
+          <div className="ap-metric-icon bg-light-purple"><Users size={24}/></div>
+          <div className="ap-metric-info">
             <h4>Active Sessions</h4>
-            <div className="metric-value">42</div>
-            <div className="metric-trend">Across 3 branches</div>
+            <div className="ap-metric-value">42</div>
+            <div className="ap-metric-trend">Across 3 branches</div>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon bg-purple"><Server size={24}/></div>
-          <div className="metric-info">
+        <div className="ap-metric-card">
+          <div className="ap-metric-icon bg-purple"><Server size={24}/></div>
+          <div className="ap-metric-info">
             <h4>API Usage</h4>
-            <div className="metric-value">4.2k / 10k</div>
-            <div className="metric-trend positive">Limits reset in 2 days</div>
+            <div className="ap-metric-value">4.2k / 10k</div>
+            <div className="ap-metric-trend text-cyan">Limits reset in 2 days</div>
           </div>
         </div>
-        <div className="metric-card">
-          <div className="metric-icon bg-orange"><HardDrive size={24}/></div>
-          <div className="metric-info">
+        <div className="ap-metric-card">
+          <div className="ap-metric-icon bg-pink"><HardDrive size={24}/></div>
+          <div className="ap-metric-info">
             <h4>Storage Used</h4>
-            <div className="metric-value">45 GB</div>
-            <div className="metric-trend negative">80% of allocated limit</div>
+            <div className="ap-metric-value">45 GB</div>
+            <div className="ap-metric-trend text-red">80% of allocated limit</div>
           </div>
         </div>
       </div>
 
-      <div className="grid-2">
-        <div className="ap-section">
+      <div className="ap-grid-2">
+        <div className="ap-card">
           <h3>System Monitoring Logs</h3>
-          <table className="ap-table" style={{marginTop:'1.5rem'}}>
+          <table className="ap-table-modern">
             <thead>
               <tr>
                 <th>Service</th>
@@ -70,25 +69,25 @@ export default function AdminPanel({ onBack }) {
             <tbody>
               <tr>
                 <td><strong>Database Cluster</strong></td>
-                <td><span className="status-badge success">Online</span></td>
+                <td><span className="ap-pill online">Online</span></td>
                 <td>12ms</td>
                 <td>99.99%</td>
               </tr>
               <tr>
                 <td><strong>File Storage (S3)</strong></td>
-                <td><span className="status-badge success">Online</span></td>
+                <td><span className="ap-pill online">Online</span></td>
                 <td>45ms</td>
                 <td>99.98%</td>
               </tr>
               <tr>
                 <td><strong>Background Jobs</strong></td>
-                <td><span className="status-badge warning">Heavy Load</span></td>
+                <td><span className="ap-pill warning">Heavy Load</span></td>
                 <td>120ms</td>
                 <td>99.95%</td>
               </tr>
               <tr>
                 <td><strong>Payment Gateway Webhooks</strong></td>
-                <td><span className="status-badge success">Online</span></td>
+                <td><span className="ap-pill online">Online</span></td>
                 <td>25ms</td>
                 <td>100%</td>
               </tr>
@@ -96,37 +95,37 @@ export default function AdminPanel({ onBack }) {
           </table>
         </div>
 
-        <div className="ap-section">
+        <div className="ap-card">
           <h3>Audit Log Summary</h3>
-          <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem'}}>
-            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)', display:'flex', alignItems:'center', gap:'1rem'}}>
-              <div style={{color:'#10b981'}}><CheckCircle size={20}/></div>
-              <div style={{flex:1}}>
+          <div className="ap-audit-list">
+            <div className="ap-audit-item">
+              <div className="ap-audit-icon text-green"><CheckCircle size={20}/></div>
+              <div className="ap-audit-content">
                 <strong>Backup Completed</strong>
-                <div className="sub-text">System triggered auto-backup to AWS S3.</div>
+                <p>System triggered auto-backup to AWS S3.</p>
               </div>
-              <span className="sub-text" style={{fontSize:'0.8rem'}}>2 hrs ago</span>
+              <div className="ap-audit-time">2 hrs ago</div>
             </div>
             
-            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)', display:'flex', alignItems:'center', gap:'1rem'}}>
-              <div style={{color:'#f59e0b'}}><AlertTriangle size={20}/></div>
-              <div style={{flex:1}}>
+            <div className="ap-audit-item">
+              <div className="ap-audit-icon text-orange"><AlertTriangle size={20}/></div>
+              <div className="ap-audit-content">
                 <strong>Tax Rate Modified</strong>
-                <div className="sub-text">Admin changed IGST rate to 18%.</div>
+                <p>Admin changed IGST rate to 18%.</p>
               </div>
-              <span className="sub-text" style={{fontSize:'0.8rem'}}>5 hrs ago</span>
+              <div className="ap-audit-time">5 hrs ago</div>
             </div>
 
-            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)', display:'flex', alignItems:'center', gap:'1rem'}}>
-              <div style={{color:'#ef4444'}}><Lock size={20}/></div>
-              <div style={{flex:1}}>
+            <div className="ap-audit-item">
+              <div className="ap-audit-icon text-red"><Lock size={20}/></div>
+              <div className="ap-audit-content">
                 <strong>Failed Login Attempt</strong>
-                <div className="sub-text">Multiple failures for 'sales_user'. Account locked.</div>
+                <p>Multiple failures for 'sales_user'. Account locked.</p>
               </div>
-              <span className="sub-text" style={{fontSize:'0.8rem'}}>1 day ago</span>
+              <div className="ap-audit-time">1 day ago</div>
             </div>
           </div>
-          <button className="btn-secondary" style={{width:'100%', marginTop:'1rem'}} onClick={() => setActiveTab('security')}>View Full Audit Logs</button>
+          <a className="ap-link" onClick={() => setActiveTab('security')}>View Full Audit Logs</a>
         </div>
       </div>
     </div>
@@ -148,12 +147,12 @@ export default function AdminPanel({ onBack }) {
           <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem'}}>
             <div className="form-group">
               <label>Legal Business Name</label>
-              <input type="text" defaultValue="NexusBill Technologies Pvt Ltd" />
+              <input type="text" defaultValue="YourBill Technologies Pvt Ltd" />
             </div>
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
               <div className="form-group">
                 <label>Company Email</label>
-                <input type="email" defaultValue="billing@nexusbill.com" />
+                <input type="email" defaultValue="billing@yourbill.com" />
               </div>
               <div className="form-group">
                 <label>Company Phone</label>
@@ -585,7 +584,7 @@ export default function AdminPanel({ onBack }) {
             <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)', margin:'1rem 0'}}>
               <h4 style={{marginBottom:'0.5rem'}}>AWS S3 Configuration</h4>
               <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
-                <input type="text" placeholder="Bucket Name" defaultValue="nexusbill-prod-backups" style={{padding:'0.5rem', borderRadius:'6px', border:'1px solid var(--border-color)', background:'var(--bg-secondary)', color:'var(--text-primary)'}}/>
+                <input type="text" placeholder="Bucket Name" defaultValue="yourbill-prod-backups" style={{padding:'0.5rem', borderRadius:'6px', border:'1px solid var(--border-color)', background:'var(--bg-secondary)', color:'var(--text-primary)'}}/>
                 <input type="text" placeholder="Region" defaultValue="ap-south-1" style={{padding:'0.5rem', borderRadius:'6px', border:'1px solid var(--border-color)', background:'var(--bg-secondary)', color:'var(--text-primary)'}}/>
               </div>
               <button className="btn-secondary" style={{width:'100%', marginTop:'0.5rem'}}>Test Connection</button>
@@ -654,20 +653,16 @@ export default function AdminPanel({ onBack }) {
 
   return (
     <div className="admin-panel-wrapper">
-      {activeTab === 'dashboard' && (
-        <div className="ap-header" style={{paddingBottom:0, borderBottom:'none', marginBottom:'1rem'}}>
-          <button className="back-btn" onClick={onBack}>← Back to Home</button>
-        </div>
-      )}
-      
-      <div className="tabs-simple">
-        <button className={`tab-simple ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Monitoring</button>
-        <button className={`tab-simple ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>System Settings</button>
-        <button className={`tab-simple ${activeTab === 'tax' ? 'active' : ''}`} onClick={() => setActiveTab('tax')}>Tax & Currency</button>
-        <button className={`tab-simple ${activeTab === 'templates' ? 'active' : ''}`} onClick={() => setActiveTab('templates')}>Templates & Workflows</button>
-        <button className={`tab-simple ${activeTab === 'security' ? 'active' : ''}`} onClick={() => setActiveTab('security')}>Security & Audit</button>
-        <button className={`tab-simple ${activeTab === 'backups' ? 'active' : ''}`} onClick={() => setActiveTab('backups')}>Backups</button>
+      <div className="ap-tabs-top">
+        <button className={`ap-tab ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Monitoring</button>
+        <button className={`ap-tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>System Settings</button>
+        <button className={`ap-tab ${activeTab === 'tax' ? 'active' : ''}`} onClick={() => setActiveTab('tax')}>Tax & Currency</button>
+        <button className={`ap-tab ${activeTab === 'templates' ? 'active' : ''}`} onClick={() => setActiveTab('templates')}>Templates & Workflows</button>
+        <button className={`ap-tab ${activeTab === 'security' ? 'active' : ''}`} onClick={() => setActiveTab('security')}>Security & Audit</button>
+        <button className={`ap-tab ${activeTab === 'backups' ? 'active' : ''}`} onClick={() => setActiveTab('backups')}>Backups</button>
       </div>
+
+      <button className="back-btn-top" onClick={onBack}>← Back to Home</button>
 
       {activeTab === 'dashboard' && renderDashboard()}
       {activeTab === 'settings' && renderSystemSettings()}

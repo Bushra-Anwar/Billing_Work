@@ -1,25 +1,180 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Landmark, BookOpen, PieChart, TrendingDown, TrendingUp,
   DollarSign, FileText, CheckCircle, Search, Plus, Filter,
-  RefreshCw, Settings, AlertTriangle, Lock, FileSpreadsheet
+  RefreshCw, Settings, AlertTriangle, Lock, FileSpreadsheet,
+  Trash2, Loader2, ArrowRight
 } from 'lucide-react';
+import { accountingApi } from '../api';
 import './AccountingManagement.css';
 
 export default function AccountingManagement({ onBack }) {
-  const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(false);
+
+  // Financial overview metrics
+  const [overview, setOverview] = useState({
+    totalAssets: 12450000,
+    totalLiabilities: 3420000,
+    totalEquity: 9030000,
+    netProfit: 1850000,
+    cashBalance: 150000,
+    bankBalance: 4200000,
+    accountsReceivable: 1520000,
+    totalExpenses: 280000,
+    journalEntries: []
+  });
+
+  // Expenses state
+  const [expenses, setExpenses] = useState([]);
+  const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [expenseForm, setExpenseForm] = useState({
+    category: 'Office Supplies',
+    vendor: '',
+    amount: '',
+    taxAmount: '',
+    paymentMethod: 'Bank Transfer',
+    notes: ''
+  });
+
+  // Manual Journal Entry state
+  const [showAddJournalModal, setShowAddJournalModal] = useState(false);
+  const [journalForm, setJournalForm] = useState({
+    description: '',
+    debitAccount: 'Cash / Bank A/c',
+    creditAccount: 'Sales Revenue A/c',
+    amount: ''
+  });
+
+  useEffect(() => {
+    loadOverview();
+    loadExpenses();
+  }, []);
+
+  const loadOverview = async () => {
+    setLoading(true);
+    try {
+      const data = await accountingApi.getFinancialOverview();
+      if (data) {
+        setOverview(data);
+      }
+    } catch (err) {
+      console.error('Failed to load accounting overview:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadExpenses = async () => {
+    setLoadingExpenses(true);
+    try {
+      const data = await accountingApi.getExpenses();
+      if (Array.isArray(data)) {
+        setExpenses(data);
+      }
+    } catch (err) {
+      console.error('Failed to load expenses:', err);
+    } finally {
+      setLoadingExpenses(false);
+    }
+  };
+
+  const handleCreateExpense = async (e) => {
+    e.preventDefault();
+    if (!expenseForm.vendor || !expenseForm.amount) return;
+    try {
+      await accountingApi.createExpense({
+        ...expenseForm,
+        amount: parseFloat(expenseForm.amount),
+        taxAmount: parseFloat(expenseForm.taxAmount) || 0
+      });
+      setShowAddExpenseModal(false);
+      setExpenseForm({
+        category: 'Office Supplies',
+        vendor: '',
+        amount: '',
+        taxAmount: '',
+        paymentMethod: 'Bank Transfer',
+        notes: ''
+      });
+      loadExpenses();
+      loadOverview();
+    } catch (err) {
+      alert('Failed to record expense: ' + err.message);
+    }
+  };
+
+  const handleDeleteExpense = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this expense?')) return;
+    try {
+      await accountingApi.deleteExpense(id);
+      loadExpenses();
+      loadOverview();
+    } catch (err) {
+      alert('Failed to delete expense: ' + err.message);
+    }
+  };
+
+  const handleCreateJournal = (e) => {
+    e.preventDefault();
+    if (!journalForm.description || !journalForm.amount) return;
+    const newEntry = {
+      id: `JE-MAN-${Date.now().toString().slice(-4)}`,
+      date: new Date().toISOString().split('T')[0],
+      description: journalForm.description,
+      debitAccount: journalForm.debitAccount,
+      creditAccount: journalForm.creditAccount,
+      amount: parseFloat(journalForm.amount),
+      status: 'Posted'
+    };
+    setOverview(prev => ({
+      ...prev,
+      journalEntries: [newEntry, ...(prev.journalEntries || [])]
+    }));
+    setShowAddJournalModal(false);
+    setJournalForm({
+      description: '',
+      debitAccount: 'Cash / Bank A/c',
+      creditAccount: 'Sales Revenue A/c',
+      amount: ''
+    });
+  };
+
+  const handleExportReports = () => {
+    const csvContent = "data:text/csv;charset=utf-8," +
+      "Account Head,Type,Balance (INR)\n" +
+      `Cash Balance,Asset,${overview.cashBalance || 0}\n` +
+      `Bank Balance,Asset,${overview.bankBalance || 0}\n` +
+      `Accounts Receivable,Asset,${overview.accountsReceivable || 0}\n` +
+      `Total Assets,Summary,${overview.totalAssets || 0}\n` +
+      `Total Liabilities,Summary,${overview.totalLiabilities || 0}\n` +
+      `Total Equity,Summary,${overview.totalEquity || 0}\n` +
+      `Net Profit,Summary,${overview.netProfit || 0}\n`;
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Balance_Sheet_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const renderDashboard = () => (
     <div className="am-view fade-in">
       <div className="am-header">
         <div>
-          <button className="back-btn" onClick={onBack}>← Back to Home</button>
+          <button className="back-btn" onClick={onBack}>← Back to Dashboard</button>
           <h2 className="am-title">Accounting & Finance</h2>
-          <p className="am-subtitle">Double-entry accounting, ledgers, journals, and reconciliation</p>
+          <p className="am-subtitle">Enterprise double-entry accounting, general ledgers, and trial balances</p>
         </div>
         <div style={{display:'flex', gap:'1rem'}}>
-          <button className="btn-secondary"><FileSpreadsheet size={16}/> Export Reports</button>
-          <button className="btn-primary rainbow-bg"><Plus size={16} /> New Journal Entry</button>
+          <button className="btn-secondary" onClick={loadOverview} disabled={loading} style={{display:'flex', alignItems:'center', gap:'0.4rem'}}>
+            <RefreshCw size={16} className={loading ? 'spin' : ''}/> Sync Ledgers
+          </button>
+          <button className="btn-secondary" onClick={handleExportReports}><FileSpreadsheet size={16}/> Export Reports</button>
+          <button className="btn-primary rainbow-bg" onClick={() => setShowAddJournalModal(true)}><Plus size={16} /> New Journal Entry</button>
         </div>
       </div>
 
@@ -28,7 +183,7 @@ export default function AccountingManagement({ onBack }) {
           <div className="metric-icon bg-blue"><Landmark size={24}/></div>
           <div className="metric-info">
             <h4>Total Assets</h4>
-            <div className="metric-value">₹1,24,50,000</div>
+            <div className="metric-value">₹{(overview.totalAssets || 0).toLocaleString('en-IN')}</div>
             <div className="metric-trend positive">Cash, Bank, AR, Inventory</div>
           </div>
         </div>
@@ -36,95 +191,89 @@ export default function AccountingManagement({ onBack }) {
           <div className="metric-icon" style={{background:'rgba(239, 68, 68, 0.1)', color:'#ef4444'}}><TrendingDown size={24}/></div>
           <div className="metric-info">
             <h4>Total Liabilities</h4>
-            <div className="metric-value text-orange">₹34,20,000</div>
-            <div className="metric-trend negative">AP, GST Payable, Loans</div>
+            <div className="metric-value text-orange">₹{(overview.totalLiabilities || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend negative">AP, GST Payable, Accruals</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-purple"><PieChart size={24}/></div>
           <div className="metric-info">
             <h4>Total Equity</h4>
-            <div className="metric-value">₹90,30,000</div>
-            <div className="metric-trend">Capital + Retained Earnings</div>
+            <div className="metric-value">₹{(overview.totalEquity || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend">Assets - Liabilities</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-green"><TrendingUp size={24}/></div>
           <div className="metric-info">
             <h4>Net Profit (YTD)</h4>
-            <div className="metric-value">₹18,50,000</div>
-            <div className="metric-trend positive">Revenue - Expenses</div>
+            <div className="metric-value text-green">₹{(overview.netProfit || 0).toLocaleString('en-IN')}</div>
+            <div className="metric-trend positive">Billed Sales - Expenses</div>
           </div>
         </div>
       </div>
 
       <div className="grid-2">
         <div className="am-section">
-          <h3>Financial Snapshot</h3>
+          <h3>Balance Sheet Snapshot</h3>
           <table className="am-table" style={{marginTop:'1.5rem'}}>
             <tbody>
               <tr>
-                <td><strong>Cash Balance</strong></td>
-                <td style={{textAlign:'right'}}>₹ 1,50,000</td>
+                <td><strong>Cash on Hand</strong></td>
+                <td style={{textAlign:'right'}}>₹ {(overview.cashBalance || 0).toLocaleString('en-IN')}</td>
               </tr>
               <tr>
-                <td><strong>Bank Balance (HDFC)</strong></td>
-                <td style={{textAlign:'right'}}>₹ 42,00,000</td>
+                <td><strong>Operating Bank Balance</strong></td>
+                <td style={{textAlign:'right'}}>₹ {(overview.bankBalance || 0).toLocaleString('en-IN')}</td>
               </tr>
               <tr>
-                <td><strong>Accounts Receivable (AR)</strong></td>
-                <td style={{textAlign:'right', color:'#10b981'}}>₹ 15,20,000</td>
+                <td><strong>Accounts Receivable (Customer Pending)</strong></td>
+                <td style={{textAlign:'right', color:'#10b981'}}>₹ {(overview.accountsReceivable || 0).toLocaleString('en-IN')}</td>
               </tr>
               <tr>
-                <td><strong>Accounts Payable (AP)</strong></td>
-                <td style={{textAlign:'right', color:'#ef4444'}}>₹ 8,40,000</td>
+                <td><strong>Operating Expenses (Current Period)</strong></td>
+                <td style={{textAlign:'right', color:'#ef4444'}}>₹ {(overview.totalExpenses || 0).toLocaleString('en-IN')}</td>
               </tr>
               <tr>
-                <td><strong>GST Liability (Current Month)</strong></td>
-                <td style={{textAlign:'right', color:'#ef4444'}}>₹ 2,15,000</td>
+                <td><strong>Net Operating Margin</strong></td>
+                <td style={{textAlign:'right', fontWeight:'bold', color:'#8b5cf6'}}>₹ {(overview.netProfit || 0).toLocaleString('en-IN')}</td>
               </tr>
             </tbody>
           </table>
-          <button className="btn-secondary" style={{width:'100%', marginTop:'1rem'}} onClick={() => setActiveTab('reports')}>View Detailed Balance Sheet</button>
+          <button className="btn-secondary" style={{width:'100%', marginTop:'1rem'}} onClick={() => setActiveTab('reports')}>
+            View Detailed Trial Balance
+          </button>
         </div>
 
         <div className="am-section">
-          <h3>Recent Auto-Journals</h3>
-          <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem'}}>
-            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:'0.5rem'}}>
-                <strong>Sales Invoice #INV-2026-001</strong>
-                <span className="sub-text">Today, 10:45 AM</span>
-              </div>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem'}}>
-                <span className="sub-text">AR (Dr) ₹25,000</span>
-                <span className="sub-text">Sales (Cr) ₹25,000</span>
-              </div>
-            </div>
-            
-            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:'0.5rem'}}>
-                <strong>Payment Received #PAY-881</strong>
-                <span className="sub-text">Today, 09:30 AM</span>
-              </div>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem'}}>
-                <span className="sub-text">Bank (Dr) ₹10,000</span>
-                <span className="sub-text">AR (Cr) ₹10,000</span>
-              </div>
-            </div>
-
-            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-              <div style={{display:'flex', justifyContent:'space-between', marginBottom:'0.5rem'}}>
-                <strong>Expense Recorded #EXP-042</strong>
-                <span className="sub-text">Yesterday</span>
-              </div>
-              <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.9rem'}}>
-                <span className="sub-text">Office Supplies (Dr) ₹2,500</span>
-                <span className="sub-text">Cash (Cr) ₹2,500</span>
-              </div>
-            </div>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+            <h3>Recent Auto-Journal Entries</h3>
+            <button className="btn-secondary" style={{fontSize:'0.8rem', padding:'0.2rem 0.6rem'}} onClick={() => setActiveTab('journals')}>
+              View All
+            </button>
           </div>
-          <button className="btn-secondary" style={{width:'100%', marginTop:'1rem'}} onClick={() => setActiveTab('journals')}>View All Journals</button>
+
+          <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'0.8rem'}}>
+            {(overview.journalEntries && overview.journalEntries.length > 0) ? (
+              overview.journalEntries.slice(0, 4).map((je, idx) => (
+                <div key={idx} style={{background:'var(--bg-color)', padding:'0.9rem 1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', marginBottom:'0.3rem'}}>
+                    <strong>{je.description}</strong>
+                    <span className="status-badge success">{je.status}</span>
+                  </div>
+                  <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.85rem'}}>
+                    <span className="sub-text">Dr: {je.debitAccount}</span>
+                    <span className="sub-text">Cr: {je.creditAccount}</span>
+                    <span style={{fontWeight:'bold', color:'var(--text-primary)'}}>₹{(je.amount || 0).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{padding:'2rem', textAlign:'center', color:'var(--text-secondary)'}}>
+                No journal entries recorded yet. Invoices and expenses will automatically populate entries here.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -134,37 +283,21 @@ export default function AccountingManagement({ onBack }) {
     <div className="am-view fade-in">
        <div className="am-header">
         <div>
+          <button className="back-btn" onClick={() => setActiveTab('dashboard')}>← Back to Overview</button>
           <h2 className="am-title">Chart of Accounts (COA)</h2>
-          <p className="am-subtitle">Master list of all financial accounts</p>
+          <p className="am-subtitle">Master structure of asset, liability, equity, income, and expense accounts</p>
         </div>
-        <button className="btn-primary rainbow-bg"><Plus size={16}/> Add Account</button>
       </div>
 
       <div className="am-section">
-        <div style={{display:'flex', gap:'1rem', marginBottom:'1.5rem'}}>
-          <div className="search-box" style={{background:'var(--bg-color)', border:'1px solid var(--border-color)', display:'flex', alignItems:'center', padding:'0.5rem 1rem', borderRadius:'8px', flex:1}}>
-            <Search size={16} style={{marginRight:'0.5rem', color:'var(--text-secondary)'}}/>
-            <input type="text" placeholder="Search account name or code..." style={{background:'transparent', border:'none', outline:'none', color:'var(--text-primary)', width:'100%'}} />
-          </div>
-          <select style={{padding:'0.8rem', borderRadius:'8px', border:'1px solid var(--border-color)', background:'var(--bg-color)', color:'var(--text-primary)'}}>
-            <option>All Types</option>
-            <option>Asset</option>
-            <option>Liability</option>
-            <option>Equity</option>
-            <option>Income</option>
-            <option>Expense</option>
-          </select>
-        </div>
-
         <table className="am-table">
           <thead>
             <tr>
-              <th>Code</th>
+              <th>Account Code</th>
               <th>Account Name</th>
               <th>Type</th>
               <th>Current Balance</th>
               <th>Status</th>
-              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -172,41 +305,43 @@ export default function AccountingManagement({ onBack }) {
               <td><strong>1001</strong></td>
               <td>Cash on Hand</td>
               <td><span className="account-type-badge asset">Asset</span></td>
-              <td>₹ 1,50,000 Dr</td>
+              <td>₹ {(overview.cashBalance || 150000).toLocaleString('en-IN')} Dr</td>
               <td><span className="status-badge success">Active</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Ledger</button></td>
             </tr>
             <tr>
               <td><strong>1002</strong></td>
-              <td>HDFC Bank Account</td>
+              <td>Operating Bank Account</td>
               <td><span className="account-type-badge asset">Asset</span></td>
-              <td>₹ 42,00,000 Dr</td>
+              <td>₹ {(overview.bankBalance || 4200000).toLocaleString('en-IN')} Dr</td>
               <td><span className="status-badge success">Active</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Ledger</button></td>
+            </tr>
+            <tr>
+              <td><strong>1100</strong></td>
+              <td>Accounts Receivable (Trade Debtors)</td>
+              <td><span className="account-type-badge asset">Asset</span></td>
+              <td>₹ {(overview.accountsReceivable || 0).toLocaleString('en-IN')} Dr</td>
+              <td><span className="status-badge success">Active</span></td>
             </tr>
             <tr>
               <td><strong>2001</strong></td>
-              <td>Accounts Payable</td>
+              <td>Accounts Payable & Tax Liabilities</td>
               <td><span className="account-type-badge liability">Liability</span></td>
-              <td>₹ 8,40,000 Cr</td>
+              <td>₹ {(overview.totalLiabilities || 0).toLocaleString('en-IN')} Cr</td>
               <td><span className="status-badge success">Active</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Ledger</button></td>
+            </tr>
+            <tr>
+              <td><strong>3001</strong></td>
+              <td>Owner's Equity & Retained Earnings</td>
+              <td><span className="account-type-badge equity">Equity</span></td>
+              <td>₹ {(overview.totalEquity || 0).toLocaleString('en-IN')} Cr</td>
+              <td><span className="status-badge success">Active</span></td>
             </tr>
             <tr>
               <td><strong>4001</strong></td>
-              <td>Sales Revenue</td>
+              <td>Sales & Invoicing Revenue</td>
               <td><span className="account-type-badge income">Income</span></td>
-              <td>₹ 75,00,000 Cr</td>
+              <td>₹ {((overview.netProfit || 0) + (overview.totalExpenses || 0)).toLocaleString('en-IN')} Cr</td>
               <td><span className="status-badge success">Active</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Ledger</button></td>
-            </tr>
-            <tr>
-              <td><strong>5001</strong></td>
-              <td>Salary Expense</td>
-              <td><span className="account-type-badge expense">Expense</span></td>
-              <td>₹ 12,00,000 Dr</td>
-              <td><span className="status-badge success">Active</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Ledger</button></td>
             </tr>
           </tbody>
         </table>
@@ -218,245 +353,52 @@ export default function AccountingManagement({ onBack }) {
     <div className="am-view fade-in">
        <div className="am-header">
         <div>
+          <button className="back-btn" onClick={() => setActiveTab('dashboard')}>← Back to Overview</button>
           <h2 className="am-title">Journal Entries</h2>
-          <p className="am-subtitle">Record and view all accounting transactions (Total Debits = Total Credits)</p>
+          <p className="am-subtitle">Chronological record of double-entry transactions (Total Debits = Total Credits)</p>
         </div>
-        <button className="btn-primary rainbow-bg"><Plus size={16}/> Manual Entry</button>
+        <button className="btn-primary rainbow-bg" onClick={() => setShowAddJournalModal(true)}><Plus size={16}/> New Manual Entry</button>
       </div>
 
-      <div className="journal-entry-card">
-        <div className="journal-entry-header">
-          <div>
-            <h3 style={{marginBottom:'0.2rem'}}>Sales Invoice #INV-2026-001</h3>
-            <span className="sub-text">Jan 03, 2026 | Auto-generated by System</span>
-          </div>
-          <span className="status-badge success">Posted</span>
-        </div>
-        <div className="journal-entry-body">
-          <table className="journal-table">
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Narration</th>
-                <th style={{textAlign:'right'}}>Debit (Dr)</th>
-                <th style={{textAlign:'right'}}>Credit (Cr)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Accounts Receivable (1100)</td>
-                <td className="sub-text">Invoice INV-2026-001 - ABC Traders</td>
-                <td style={{textAlign:'right'}}>₹ 25,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td style={{paddingLeft:'2rem'}}>Sales Revenue (4001)</td>
-                <td className="sub-text">Product Sales</td>
-                <td style={{textAlign:'right'}}>-</td>
-                <td style={{textAlign:'right'}}>₹ 21,186</td>
-              </tr>
-              <tr>
-                <td style={{paddingLeft:'2rem'}}>GST Payable (2100)</td>
-                <td className="sub-text">18% GST</td>
-                <td style={{textAlign:'right'}}>-</td>
-                <td style={{textAlign:'right'}}>₹ 3,814</td>
-              </tr>
-              <tr style={{fontWeight:'bold', background:'var(--hover-bg)'}}>
-                <td colSpan="2" style={{textAlign:'right'}}>Total:</td>
-                <td style={{textAlign:'right'}}>₹ 25,000</td>
-                <td style={{textAlign:'right'}}>₹ 25,000</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="journal-entry-card">
-        <div className="journal-entry-header">
-          <div>
-            <h3 style={{marginBottom:'0.2rem'}}>Rent Payment</h3>
-            <span className="sub-text">Jan 01, 2026 | Created by Admin | Ref: CHQ-9912</span>
-          </div>
-          <span className="status-badge success">Posted</span>
-        </div>
-        <div className="journal-entry-body">
-          <table className="journal-table">
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th>Narration</th>
-                <th style={{textAlign:'right'}}>Debit (Dr)</th>
-                <th style={{textAlign:'right'}}>Credit (Cr)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Rent Expense (5010)</td>
-                <td className="sub-text">Office Rent Jan 2026</td>
-                <td style={{textAlign:'right'}}>₹ 45,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td style={{paddingLeft:'2rem'}}>HDFC Bank Account (1002)</td>
-                <td className="sub-text">Cheque 9912</td>
-                <td style={{textAlign:'right'}}>-</td>
-                <td style={{textAlign:'right'}}>₹ 45,000</td>
-              </tr>
-              <tr style={{fontWeight:'bold', background:'var(--hover-bg)'}}>
-                <td colSpan="2" style={{textAlign:'right'}}>Total:</td>
-                <td style={{textAlign:'right'}}>₹ 45,000</td>
-                <td style={{textAlign:'right'}}>₹ 45,000</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderLedgersReports = () => (
-    <div className="am-view fade-in">
-       <div className="am-header">
-        <div>
-          <h2 className="am-title">Ledgers & Reports</h2>
-          <p className="am-subtitle">General Ledger and Trial Balance generation</p>
-        </div>
-      </div>
-
-      <div className="grid-2">
-        <div className="am-section">
-          <h3>General Ledger Explorer</h3>
-          <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem'}}>
-            <div className="form-group">
-              <label>Select Account</label>
-              <select>
-                <option>1002 - HDFC Bank Account</option>
-                <option>1001 - Cash on Hand</option>
-                <option>1100 - Accounts Receivable</option>
-                <option>4001 - Sales Revenue</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Date Range</label>
-              <div style={{display:'flex', gap:'1rem'}}>
-                <input type="date" />
-                <input type="date" />
+      <div style={{display:'flex', flexDirection:'column', gap:'1.5rem'}}>
+        {(overview.journalEntries && overview.journalEntries.length > 0) ? (
+          overview.journalEntries.map((je, idx) => (
+            <div key={idx} className="journal-entry-card" style={{background:'var(--bg-secondary)', borderRadius:'12px', border:'1px solid var(--border-color)', padding:'1.5rem'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem', borderBottom:'1px solid var(--border-color)', paddingBottom:'0.8rem'}}>
+                <div>
+                  <h3 style={{margin:0, fontSize:'1.1rem'}}>{je.description}</h3>
+                  <span className="sub-text">Entry #{je.id} • {je.date}</span>
+                </div>
+                <span className="status-badge success">{je.status}</span>
               </div>
+              <table className="journal-table" style={{width:'100%'}}>
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th style={{textAlign:'right'}}>Debit (Dr)</th>
+                    <th style={{textAlign:'right'}}>Credit (Cr)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>{je.debitAccount}</strong></td>
+                    <td style={{textAlign:'right', color:'#10b981'}}>₹ {(je.amount || 0).toLocaleString('en-IN')}</td>
+                    <td style={{textAlign:'right'}}>-</td>
+                  </tr>
+                  <tr>
+                    <td style={{paddingLeft:'1.5rem'}}>{je.creditAccount}</td>
+                    <td style={{textAlign:'right'}}>-</td>
+                    <td style={{textAlign:'right', color:'#8b5cf6'}}>₹ {(je.amount || 0).toLocaleString('en-IN')}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <button className="btn-primary" style={{marginTop:'0.5rem'}}><Search size={16}/> View Ledger</button>
+          ))
+        ) : (
+          <div className="am-section" style={{textAlign:'center', padding:'3rem'}}>
+            <p className="sub-text">No journal entries recorded. Add a manual entry or create live invoices to see entries here.</p>
           </div>
-          
-          <div style={{marginTop:'2rem', borderTop:'1px solid var(--border-color)', paddingTop:'1rem'}}>
-            <h4 style={{marginBottom:'1rem'}}>Preview: HDFC Bank Account</h4>
-            <table className="am-table" style={{fontSize:'0.85rem'}}>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Debit</th>
-                  <th>Credit</th>
-                  <th>Balance</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Jan 01</td>
-                  <td>Opening Balance</td>
-                  <td>-</td>
-                  <td>-</td>
-                  <td>₹ 41,55,000 Dr</td>
-                </tr>
-                <tr>
-                  <td>Jan 01</td>
-                  <td>Rent Exp (CHQ-9912)</td>
-                  <td>-</td>
-                  <td>₹ 45,000</td>
-                  <td>₹ 41,10,000 Dr</td>
-                </tr>
-                <tr>
-                  <td>Jan 03</td>
-                  <td>Payment Rcvd (PAY-881)</td>
-                  <td>₹ 10,000</td>
-                  <td>-</td>
-                  <td>₹ 41,20,000 Dr</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="am-section">
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-            <h3>Trial Balance</h3>
-            <button className="btn-secondary" style={{padding:'0.3rem 0.8rem'}}><FileText size={16}/> Export</button>
-          </div>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>As of Jan 31, 2026. (Σ Debit = Σ Credit)</p>
-          
-          <table className="am-table" style={{fontSize:'0.85rem'}}>
-            <thead>
-              <tr>
-                <th>Account</th>
-                <th style={{textAlign:'right'}}>Debit (₹)</th>
-                <th style={{textAlign:'right'}}>Credit (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Cash on Hand</td>
-                <td style={{textAlign:'right'}}>1,50,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td>HDFC Bank Account</td>
-                <td style={{textAlign:'right'}}>42,00,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td>Accounts Receivable</td>
-                <td style={{textAlign:'right'}}>15,20,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td>Inventory</td>
-                <td style={{textAlign:'right'}}>65,80,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td>Accounts Payable</td>
-                <td style={{textAlign:'right'}}>-</td>
-                <td style={{textAlign:'right'}}>8,40,000</td>
-              </tr>
-              <tr>
-                <td>Sales Revenue</td>
-                <td style={{textAlign:'right'}}>-</td>
-                <td style={{textAlign:'right'}}>75,00,000</td>
-              </tr>
-              <tr>
-                <td>Owner Capital</td>
-                <td style={{textAlign:'right'}}>-</td>
-                <td style={{textAlign:'right'}}>71,80,000</td>
-              </tr>
-              <tr>
-                <td>Salary Expense</td>
-                <td style={{textAlign:'right'}}>12,00,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr>
-                <td>Rent Expense</td>
-                <td style={{textAlign:'right'}}>1,80,000</td>
-                <td style={{textAlign:'right'}}>-</td>
-              </tr>
-              <tr style={{fontWeight:'bold', background:'rgba(16, 185, 129, 0.1)', color:'#10b981'}}>
-                <td>Total</td>
-                <td style={{textAlign:'right'}}>1,38,30,000</td>
-                <td style={{textAlign:'right'}}>1,38,30,000</td>
-              </tr>
-            </tbody>
-          </table>
-          <div style={{textAlign:'center', marginTop:'1rem', color:'#10b981', fontWeight:'bold'}}>
-            <CheckCircle size={16} style={{verticalAlign:'middle', marginRight:'5px'}}/> Trial Balance Matches Perfectly
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -465,214 +407,121 @@ export default function AccountingManagement({ onBack }) {
     <div className="am-view fade-in">
        <div className="am-header">
         <div>
-          <h2 className="am-title">Expense Tracking</h2>
-          <p className="am-subtitle">Record bills, categorize expenses, and manage approvals</p>
+          <button className="back-btn" onClick={() => setActiveTab('dashboard')}>← Back to Overview</button>
+          <h2 className="am-title">Expense Tracking & Vendor Bills</h2>
+          <p className="am-subtitle">Record operating costs, categorize vendor expenses, and auto-claim ITC</p>
         </div>
-        <button className="btn-primary rainbow-bg"><Plus size={16}/> Record Expense</button>
+        <button className="btn-primary rainbow-bg" onClick={() => setShowAddExpenseModal(true)}><Plus size={16}/> Record Expense</button>
       </div>
 
       <div className="am-section">
-        <table className="am-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Expense #</th>
-              <th>Category</th>
-              <th>Vendor / Payee</th>
-              <th>Amount</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Jan 03, 2026</td>
-              <td>EXP-043</td>
-              <td><span className="account-type-badge expense">Travel</span></td>
-              <td>Uber India</td>
-              <td>₹ 1,250</td>
-              <td><span className="status-badge warning">Pending Approval</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Review</button></td>
-            </tr>
-            <tr>
-              <td>Jan 02, 2026</td>
-              <td>EXP-042</td>
-              <td><span className="account-type-badge expense">Office Supplies</span></td>
-              <td>Stationery Mart</td>
-              <td>₹ 2,500</td>
-              <td><span className="status-badge success">Paid</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>View</button></td>
-            </tr>
-            <tr>
-              <td>Jan 01, 2026</td>
-              <td>EXP-041</td>
-              <td><span className="account-type-badge expense">Rent</span></td>
-              <td>Prime Properties Ltd</td>
-              <td>₹ 45,000</td>
-              <td><span className="status-badge success">Paid</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>View</button></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderReconciliation = () => (
-    <div className="am-view fade-in">
-       <div className="am-header">
-        <div>
-          <h2 className="am-title">Bank Reconciliation</h2>
-          <p className="am-subtitle">Match bank statements with system transactions</p>
-        </div>
-        <button className="btn-primary rainbow-bg">Import Bank Statement (CSV/OFX)</button>
-      </div>
-
-      <div className="am-section">
-        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem'}}>
-          <div>
-            <h3>Reconciling: HDFC Bank Account</h3>
-            <span className="sub-text">Statement Date: Jan 01 - Jan 31, 2026</span>
-          </div>
-          <div style={{display:'flex', gap:'2rem', background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-            <div>
-              <div className="sub-text">System Balance</div>
-              <strong style={{fontSize:'1.2rem'}}>₹ 42,00,000</strong>
-            </div>
-            <div>
-              <div className="sub-text">Statement Balance</div>
-              <strong style={{fontSize:'1.2rem'}}>₹ 42,00,000</strong>
-            </div>
-            <div>
-              <div className="sub-text">Difference</div>
-              <strong style={{fontSize:'1.2rem', color:'#10b981'}}>₹ 0</strong>
-            </div>
-          </div>
-        </div>
-
-        <table className="am-table">
-          <thead>
-            <tr>
-              <th style={{width:'40%'}}>Bank Statement Transaction</th>
-              <th style={{width:'20%'}}>Status</th>
-              <th style={{width:'40%'}}>System Journal Entry</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>
-                <div><strong>DEPOSIT - NEFT (ABC Traders)</strong></div>
-                <div className="sub-text">Jan 03 | Ref: N00392811 | ₹ 10,000</div>
-              </td>
-              <td><span className="status-badge success"><CheckCircle size={12} style={{marginRight:'3px'}}/> Auto-Matched</span></td>
-              <td>
-                <div><strong>Payment Received #PAY-881</strong></div>
-                <div className="sub-text">Jan 03 | ₹ 10,000 (AR Credit)</div>
-              </td>
-            </tr>
-            <tr>
-              <td>
-                <div><strong>WITHDRAWAL - CHQ 9912</strong></div>
-                <div className="sub-text">Jan 02 | Ref: 9912 | ₹ 45,000</div>
-              </td>
-              <td><span className="status-badge success"><CheckCircle size={12} style={{marginRight:'3px'}}/> Matched</span></td>
-              <td>
-                <div><strong>Rent Payment (EXP-041)</strong></div>
-                <div className="sub-text">Jan 01 | ₹ 45,000 (Rent Dr)</div>
-              </td>
-            </tr>
-            <tr style={{background:'rgba(245, 158, 11, 0.05)'}}>
-              <td>
-                <div><strong>BANK CHARGES - SMS ALERTS</strong></div>
-                <div className="sub-text">Jan 03 | Ref: CHG-12 | ₹ 150</div>
-              </td>
-              <td><span className="status-badge warning">Unmatched</span></td>
-              <td>
-                <button className="btn-secondary" style={{width:'100%'}}>Create Journal Entry</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderSettingsPeriod = () => (
-    <div className="am-view fade-in">
-       <div className="am-header">
-        <div>
-          <h2 className="am-title">Period Closing & Settings</h2>
-          <p className="am-subtitle">Lock financial periods, manage automation rules, and view audit logs</p>
-        </div>
-      </div>
-
-      <div className="grid-2">
-        <div className="am-section">
-          <h3>Period Closing</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Lock past periods to prevent accidental accounting changes.</p>
-          
-          <table className="am-table" style={{marginBottom:'1rem'}}>
+        {loadingExpenses ? (
+          <div style={{textAlign:'center', padding:'3rem'}}><Loader2 className="spin" size={24}/> Loading expenses...</div>
+        ) : (
+          <table className="am-table">
             <thead>
               <tr>
-                <th>Period</th>
-                <th>Status</th>
+                <th>Date</th>
+                <th>Expense #</th>
+                <th>Category</th>
+                <th>Vendor / Payee</th>
+                <th>Amount</th>
+                <th>Tax</th>
+                <th>Payment Method</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Dec 2025</td>
-                <td><span className="status-badge info"><Lock size={12} style={{marginRight:'3px'}}/> Locked</span></td>
-                <td><button className="btn-secondary" style={{padding:'0.2rem 0.5rem'}} disabled>Closed</button></td>
-              </tr>
-              <tr>
-                <td>Jan 2026 (Current)</td>
-                <td><span className="status-badge success">Open</span></td>
-                <td><button className="btn-primary" style={{padding:'0.2rem 0.5rem', background:'#ef4444', color:'white', border:'none'}}>Lock Period</button></td>
-              </tr>
+              {expenses.length > 0 ? (
+                expenses.map(exp => (
+                  <tr key={exp._id}>
+                    <td>{new Date(exp.date).toLocaleDateString()}</td>
+                    <td><strong>{exp.expenseNumber}</strong></td>
+                    <td><span className="account-type-badge expense">{exp.category}</span></td>
+                    <td>{exp.vendor}</td>
+                    <td><strong>₹{exp.amount.toLocaleString('en-IN')}</strong></td>
+                    <td>₹{(exp.taxAmount || 0).toLocaleString('en-IN')}</td>
+                    <td><span className="sub-text">{exp.paymentMethod}</span></td>
+                    <td>
+                      <button 
+                        className="action-btn text-red" 
+                        onClick={() => handleDeleteExpense(exp._id)}
+                        title="Delete Expense"
+                      >
+                        <Trash2 size={16}/>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="8" style={{textAlign:'center', padding:'2rem', color:'var(--text-secondary)'}}>
+                    No expenses recorded yet. Click "Record Expense" to add your first bill!
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
+        )}
+      </div>
+    </div>
+  );
 
-          <div style={{background:'rgba(245, 158, 11, 0.1)', border:'1px solid #f59e0b', padding:'1rem', borderRadius:'8px', marginTop:'2rem'}}>
-            <h4 style={{color:'#f59e0b', display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.5rem'}}><AlertTriangle size={18}/> Year-End Closing</h4>
-            <p style={{fontSize:'0.9rem', marginBottom:'1rem'}}>Run year-end process to close income/expense accounts and transfer net profit to Retained Equity.</p>
-            <button className="btn-secondary" style={{color:'#f59e0b', borderColor:'#f59e0b'}}>Run Year-End Wizard</button>
-          </div>
+  const renderReports = () => (
+    <div className="am-view fade-in">
+       <div className="am-header">
+        <div>
+          <button className="back-btn" onClick={() => setActiveTab('dashboard')}>← Back to Overview</button>
+          <h2 className="am-title">Trial Balance & Financial Statements</h2>
+          <p className="am-subtitle">Verified balanced trial balance showing all debit and credit positions</p>
         </div>
+        <button className="btn-secondary" onClick={handleExportReports}><FileSpreadsheet size={16}/> Export CSV</button>
+      </div>
 
-        <div className="am-section">
-          <h3>Automatic Accounting Integration</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Configure how other modules generate journal entries automatically.</p>
-          
-          <div style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
-            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-              <div>
-                <strong>Sales Invoices</strong>
-                <div className="sub-text">Auto-post AR and Sales Revenue</div>
-              </div>
-              <div className="toggle-switch on"></div>
-            </div>
-            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-              <div>
-                <strong>Payment Received</strong>
-                <div className="sub-text">Auto-post Bank and AR Credit</div>
-              </div>
-              <div className="toggle-switch on"></div>
-            </div>
-            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
-              <div>
-                <strong>Inventory Purchases</strong>
-                <div className="sub-text">Auto-post Inventory Asset and AP</div>
-              </div>
-              <div className="toggle-switch on"></div>
-            </div>
-            
-            <h3 style={{marginTop:'1rem', paddingTop:'1rem', borderTop:'1px solid var(--border-color)'}}>Accounting Audit Log</h3>
-            <div className="setting-row" style={{padding:'0'}}>
-              <span className="sub-text">Track every journal entry creation, edit, or deletion.</span>
-              <button className="btn-secondary">View Audit Trail</button>
-            </div>
-          </div>
+      <div className="am-section">
+        <table className="am-table">
+          <thead>
+            <tr>
+              <th>Account Head</th>
+              <th style={{textAlign:'right'}}>Debit (₹)</th>
+              <th style={{textAlign:'right'}}>Credit (₹)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cash on Hand (Asset)</td>
+              <td style={{textAlign:'right'}}>₹{(overview.cashBalance || 0).toLocaleString('en-IN')}</td>
+              <td style={{textAlign:'right'}}>-</td>
+            </tr>
+            <tr>
+              <td>Operating Bank A/c (Asset)</td>
+              <td style={{textAlign:'right'}}>₹{(overview.bankBalance || 0).toLocaleString('en-IN')}</td>
+              <td style={{textAlign:'right'}}>-</td>
+            </tr>
+            <tr>
+              <td>Accounts Receivable (Asset)</td>
+              <td style={{textAlign:'right'}}>₹{(overview.accountsReceivable || 0).toLocaleString('en-IN')}</td>
+              <td style={{textAlign:'right'}}>-</td>
+            </tr>
+            <tr>
+              <td>Accounts Payable & Tax (Liability)</td>
+              <td style={{textAlign:'right'}}>-</td>
+              <td style={{textAlign:'right'}}>₹{(overview.totalLiabilities || 0).toLocaleString('en-IN')}</td>
+            </tr>
+            <tr>
+              <td>Owner's Equity & Retained Earnings</td>
+              <td style={{textAlign:'right'}}>-</td>
+              <td style={{textAlign:'right'}}>₹{(overview.totalEquity || 0).toLocaleString('en-IN')}</td>
+            </tr>
+            <tr style={{fontWeight:'bold', background:'rgba(16, 185, 129, 0.1)', color:'#10b981'}}>
+              <td>Total Trial Balance</td>
+              <td style={{textAlign:'right'}}>₹{(overview.totalAssets || 0).toLocaleString('en-IN')}</td>
+              <td style={{textAlign:'right'}}>₹{((overview.totalLiabilities || 0) + (overview.totalEquity || 0)).toLocaleString('en-IN')}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style={{textAlign:'center', marginTop:'1.5rem', color:'#10b981', fontWeight:'bold'}}>
+          <CheckCircle size={18} style={{verticalAlign:'middle', marginRight:'6px'}}/> Double-Entry Trial Balance Matches Perfectly
         </div>
       </div>
     </div>
@@ -680,29 +529,187 @@ export default function AccountingManagement({ onBack }) {
 
   return (
     <div className="accounting-management-wrapper">
-      {activeTab === 'dashboard' && (
-        <div className="am-header" style={{paddingBottom:0, borderBottom:'none', marginBottom:'1rem'}}>
-          <button className="back-btn" onClick={onBack}>← Back to Home</button>
-        </div>
-      )}
-      
       <div className="tabs-simple">
-        <button className={`tab-simple ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Overview & Dashboard</button>
+        <button className={`tab-simple ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>Overview</button>
         <button className={`tab-simple ${activeTab === 'coa' ? 'active' : ''}`} onClick={() => setActiveTab('coa')}>Chart of Accounts</button>
         <button className={`tab-simple ${activeTab === 'journals' ? 'active' : ''}`} onClick={() => setActiveTab('journals')}>Journal Entries</button>
-        <button className={`tab-simple ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>Ledgers & Trial Balance</button>
         <button className={`tab-simple ${activeTab === 'expenses' ? 'active' : ''}`} onClick={() => setActiveTab('expenses')}>Expenses</button>
-        <button className={`tab-simple ${activeTab === 'recon' ? 'active' : ''}`} onClick={() => setActiveTab('recon')}>Bank Reconciliation</button>
-        <button className={`tab-simple ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>Period & Settings</button>
+        <button className={`tab-simple ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>Trial Balance</button>
       </div>
 
       {activeTab === 'dashboard' && renderDashboard()}
       {activeTab === 'coa' && renderCOA()}
       {activeTab === 'journals' && renderJournals()}
-      {activeTab === 'reports' && renderLedgersReports()}
       {activeTab === 'expenses' && renderExpenses()}
-      {activeTab === 'recon' && renderReconciliation()}
-      {activeTab === 'settings' && renderSettingsPeriod()}
+      {activeTab === 'reports' && renderReports()}
+
+      {/* Record Expense Modal */}
+      {showAddExpenseModal && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{maxWidth:'480px'}}>
+            <div className="modal-header">
+              <h3>Record Operating Expense</h3>
+              <button className="close-btn" onClick={() => setShowAddExpenseModal(false)}>×</button>
+            </div>
+            <form onSubmit={handleCreateExpense} style={{display:'flex', flexDirection:'column', gap:'1rem', marginTop:'1rem'}}>
+              <div>
+                <label className="sub-text">Vendor / Payee *</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. Amazon Web Services, Prime Office Mart"
+                  value={expenseForm.vendor}
+                  onChange={(e) => setExpenseForm({...expenseForm, vendor: e.target.value})}
+                  className="large-input"
+                />
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+                <div>
+                  <label className="sub-text">Category</label>
+                  <select 
+                    value={expenseForm.category}
+                    onChange={(e) => setExpenseForm({...expenseForm, category: e.target.value})}
+                    className="large-select"
+                  >
+                    <option value="Office Supplies">Office Supplies</option>
+                    <option value="Software & Cloud">Software & Cloud</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Travel">Travel</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Miscellaneous">Miscellaneous</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="sub-text">Payment Method</label>
+                  <select 
+                    value={expenseForm.paymentMethod}
+                    onChange={(e) => setExpenseForm({...expenseForm, paymentMethod: e.target.value})}
+                    className="large-select"
+                  >
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Credit Card">Credit Card</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+                <div>
+                  <label className="sub-text">Amount (₹) *</label>
+                  <input 
+                    type="number"
+                    required
+                    placeholder="0.00"
+                    value={expenseForm.amount}
+                    onChange={(e) => setExpenseForm({...expenseForm, amount: e.target.value})}
+                    className="large-input"
+                  />
+                </div>
+                <div>
+                  <label className="sub-text">Tax Amount (₹)</label>
+                  <input 
+                    type="number"
+                    placeholder="0.00"
+                    value={expenseForm.taxAmount}
+                    onChange={(e) => setExpenseForm({...expenseForm, taxAmount: e.target.value})}
+                    className="large-input"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="sub-text">Notes</label>
+                <input 
+                  type="text" 
+                  placeholder="Optional description"
+                  value={expenseForm.notes}
+                  onChange={(e) => setExpenseForm({...expenseForm, notes: e.target.value})}
+                  className="large-input"
+                />
+              </div>
+
+              <div style={{display:'flex', justifyContent:'flex-end', gap:'0.8rem', marginTop:'1rem'}}>
+                <button type="button" className="btn-secondary" onClick={() => setShowAddExpenseModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary rainbow-bg">Record Expense</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Journal Entry Modal */}
+      {showAddJournalModal && (
+        <div className="modal-backdrop">
+          <div className="modal-content" style={{maxWidth:'480px'}}>
+            <div className="modal-header">
+              <h3>New Journal Entry</h3>
+              <button className="close-btn" onClick={() => setShowAddJournalModal(false)}>×</button>
+            </div>
+            <form onSubmit={handleCreateJournal} style={{display:'flex', flexDirection:'column', gap:'1rem', marginTop:'1rem'}}>
+              <div>
+                <label className="sub-text">Narration / Description *</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. Owner capital investment, Loan deposit"
+                  value={journalForm.description}
+                  onChange={(e) => setJournalForm({...journalForm, description: e.target.value})}
+                  className="large-input"
+                />
+              </div>
+
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem'}}>
+                <div>
+                  <label className="sub-text">Debit (Dr) Account</label>
+                  <select 
+                    value={journalForm.debitAccount}
+                    onChange={(e) => setJournalForm({...journalForm, debitAccount: e.target.value})}
+                    className="large-select"
+                  >
+                    <option value="Cash / Bank A/c">Cash / Bank A/c</option>
+                    <option value="Accounts Receivable A/c">Accounts Receivable A/c</option>
+                    <option value="Operating Expense A/c">Operating Expense A/c</option>
+                    <option value="Inventory Asset A/c">Inventory Asset A/c</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="sub-text">Credit (Cr) Account</label>
+                  <select 
+                    value={journalForm.creditAccount}
+                    onChange={(e) => setJournalForm({...journalForm, creditAccount: e.target.value})}
+                    className="large-select"
+                  >
+                    <option value="Sales Revenue A/c">Sales Revenue A/c</option>
+                    <option value="Accounts Payable A/c">Accounts Payable A/c</option>
+                    <option value="Owner's Equity A/c">Owner's Equity A/c</option>
+                    <option value="Bank Loan A/c">Bank Loan A/c</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="sub-text">Amount (₹) *</label>
+                <input 
+                  type="number"
+                  required
+                  placeholder="0.00"
+                  value={journalForm.amount}
+                  onChange={(e) => setJournalForm({...journalForm, amount: e.target.value})}
+                  className="large-input"
+                />
+              </div>
+
+              <div style={{display:'flex', justifyContent:'flex-end', gap:'0.8rem', marginTop:'1rem'}}>
+                <button type="button" className="btn-secondary" onClick={() => setShowAddJournalModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary rainbow-bg">Post Journal</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import './DocumentManagement.css';
 
 export default function DocumentManagement({ onBack }) {
   const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [templateType, setTemplateType] = useState('A4');
 
   const renderDashboard = () => (
     <div className="dm-view fade-in">
@@ -139,87 +140,83 @@ export default function DocumentManagement({ onBack }) {
     <div className="dm-view fade-in">
        <div className="dm-header">
         <div>
-          <h2 className="dm-title">Branding & Templates</h2>
-          <p className="dm-subtitle">Manage company logos, colors, and document layouts</p>
+          <h2 className="dm-title">Invoice Templates</h2>
+          <p className="dm-subtitle">Choose a professional design for your invoices</p>
         </div>
-        <button className="btn-primary rainbow-bg"><FilePlus size={16}/> Create Template</button>
       </div>
 
-      <div className="grid-3">
-        <div className="dm-section">
-          <h3>Company Logo</h3>
-          <div className="upload-area" style={{marginTop:'1.5rem'}}>
-            <ImageIcon size={32} />
-            <p>Upload new logo (PNG, JPG, SVG)</p>
-            <span className="sub-text">Recommended: 400x150px</span>
+      <div className="template-type-tabs">
+        <button className={`type-btn ${templateType === 'Thermal' ? 'active' : ''}`} onClick={() => setTemplateType('Thermal')}>Thermal Prints</button>
+        <button className={`type-btn ${templateType === 'A4' ? 'active' : ''}`} onClick={() => setTemplateType('A4')}>A4 Prints</button>
+        <button className={`type-btn ${templateType === 'A5' ? 'active' : ''}`} onClick={() => setTemplateType('A5')}>A5 Prints</button>
+      </div>
+
+      <div className="invoice-templates-grid">
+        <div className="invoice-preview-card">
+          <div className="invoice-mockup style-1">
+             <div className="mockup-header">
+               <div className="mockup-logo">SK</div>
+               <div className="mockup-company">
+                 <h4>SK Trading Company</h4>
+                 <p>12 Main Street, Gujarat, 395006</p>
+                 <p style={{fontSize:'0.5rem', color:'#888'}}>GSTIN: 24ABCD1234E1Z5</p>
+               </div>
+               <div className="mockup-title">TAX INVOICE</div>
+             </div>
+             <div className="mockup-body">
+                <div className="mockup-line"></div>
+                <div className="mockup-line short"></div>
+                <div className="mockup-table">
+                  <div className="m-th" style={{background:'#fcf8e3'}}></div>
+                  <div className="m-tr"></div>
+                  <div className="m-tr"></div>
+                  <div className="m-tr"></div>
+                </div>
+                <div className="mockup-total">Total: ₹3,715</div>
+                <div style={{marginTop:'2rem', fontSize:'0.45rem', color:'#666'}}>
+                  <p>Terms & Conditions:</p>
+                  <p>1. Payment is due at the time of purchase.</p>
+                  <p>2. Goods once sold cannot be returned.</p>
+                </div>
+             </div>
           </div>
-          <div style={{marginTop:'1rem', padding:'1rem', background:'var(--bg-color)', border:'1px solid var(--border-color)', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center'}}>
-            <h2 style={{color:'var(--text-primary)', fontFamily:'sans-serif', fontStyle:'italic'}}>NexusBill<span className="rainbow-text">.</span></h2>
-          </div>
-          <div className="setting-row" style={{padding:'1rem 0'}}>
-            <span>Show on Invoices</span>
-            <div className="toggle-switch on"></div>
+          <div className="preview-overlay">
+            <button className="btn-primary rainbow-bg">Use Template</button>
           </div>
         </div>
 
-        <div className="dm-section">
-          <h3>Brand Colors & Fonts</h3>
-          <div style={{marginTop:'1.5rem'}}>
-            <div className="form-group">
-              <label>Primary Brand Color</label>
-              <input type="color" defaultValue="#8b5cf6" />
-            </div>
-            <div className="form-group">
-              <label>Secondary Brand Color</label>
-              <input type="color" defaultValue="#d946ef" />
-            </div>
-            <div className="form-group">
-              <label>Document Font</label>
-              <select>
-                <option>Inter (Modern)</option>
-                <option>Roboto (Standard)</option>
-                <option>Merriweather (Serif)</option>
-                <option>Courier (Monospace)</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Default Watermark</label>
-              <input type="text" placeholder="e.g. DRAFT or CONFIDENTIAL" />
-            </div>
-            <button className="btn-primary rainbow-bg" style={{width:'100%', marginTop:'0.5rem'}}>Save Branding</button>
+        <div className="invoice-preview-card">
+          <div className="invoice-mockup style-2">
+             <div className="watermark">⚕️</div>
+             <div className="mockup-header centered">
+               <h4>Parshwanath Medicare</h4>
+               <p>Whitefield, Bangalore, Karnataka, 560103</p>
+               <p style={{fontSize:'0.5rem', color:'#888'}}>License No: 1136554</p>
+             </div>
+             <div className="mockup-body">
+                <div className="mockup-line" style={{marginTop:'1rem'}}></div>
+                <div className="mockup-table bordered">
+                  <div className="m-th" style={{background:'#eef2ff'}}></div>
+                  <div className="m-tr"></div>
+                  <div className="m-tr"></div>
+                  <div className="m-tr"></div>
+                  <div className="m-tr"></div>
+                </div>
+                <div className="mockup-total">Total: ₹596.5</div>
+             </div>
+          </div>
+          <div className="preview-overlay">
+            <button className="btn-primary rainbow-bg">Use Template</button>
           </div>
         </div>
 
-        <div className="dm-section">
-          <h3>Active Templates</h3>
-          <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem'}}>
-            <div className="template-card" style={{padding:'1rem'}}>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                <div>
-                  <h4 style={{marginBottom:'0.2rem'}}>Modern Invoice</h4>
-                  <span className="sub-text">Default for B2B</span>
-                </div>
-                <button className="btn-secondary" style={{padding:'0.3rem'}}><Edit size={16}/></button>
-              </div>
-            </div>
-            <div className="template-card" style={{padding:'1rem'}}>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                <div>
-                  <h4 style={{marginBottom:'0.2rem'}}>Thermal Receipt POS</h4>
-                  <span className="sub-text">Default for Retail</span>
-                </div>
-                <button className="btn-secondary" style={{padding:'0.3rem'}}><Edit size={16}/></button>
-              </div>
-            </div>
-            <div className="template-card" style={{padding:'1rem'}}>
-              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                <div>
-                  <h4 style={{marginBottom:'0.2rem'}}>Standard Quotation</h4>
-                  <span className="sub-text">Default</span>
-                </div>
-                <button className="btn-secondary" style={{padding:'0.3rem'}}><Edit size={16}/></button>
-              </div>
-            </div>
+        <div className="invoice-preview-card customize-card">
+          <div className="customize-content">
+             <div className="customize-icon">
+               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+             </div>
+             <h3>Customize your own Invoice</h3>
+             <p>Change colors, fonts, and layout</p>
           </div>
         </div>
       </div>

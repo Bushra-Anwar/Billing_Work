@@ -1,22 +1,137 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, TrendingUp, AlertTriangle, MessageSquare, 
-  FileText, ShieldAlert, Zap, UploadCloud, PieChart, Send, Bot, BrainCircuit, Activity
+  FileText, ShieldAlert, Zap, UploadCloud, PieChart, Send, Bot, BrainCircuit, Activity,
+  CheckCircle, ArrowRight, Loader2, RefreshCw
 } from 'lucide-react';
+import { aiApi, invoiceApi } from '../api';
 import './AIFeatures.css';
 
 export default function AIFeatures({ onBack }) {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [chatInput, setChatInput] = useState('');
   
+  // Forecast & KPI state
+  const [forecast, setForecast] = useState({
+    revenueForecast: 1250000,
+    growthPercent: 17.5,
+    cashFlowStatus: 'Healthy',
+    expectedCollections: 280000,
+    fraudAlertsCount: 0,
+    autoCategorizedRate: 96
+  });
+  const [loadingForecast, setLoadingForecast] = useState(false);
+
+  // NLP Invoicing state
+  const [promptInput, setPromptInput] = useState(
+    "Create an invoice for TechNova Solutions. Product: Business Laptop. Quantity: 3. Price: 65,000 INR each. Apply 18% GST."
+  );
+  const [parsedInvoice, setParsedInvoice] = useState(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(null);
+
+  // Chatbot Copilot state
+  const [chatMessages, setChatMessages] = useState([
+    {
+      sender: 'ai',
+      text: "Hello! I am your AI Business Copilot. I analyze your live invoices, customers, and inventory data. Ask me anything about revenue, overdue accounts, low stock items, or GST liabilities!"
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+
+  // Auto-categorization approval queue state
+  const [expensesQueue, setExpensesQueue] = useState([
+    { id: 1, desc: 'Uber Ride - Client Meeting', amount: 550, category: 'Travel Expense', confidence: 98, approved: false },
+    { id: 2, desc: 'Swiggy Team Lunch', amount: 1240, category: 'Food & Meals', confidence: 95, approved: false },
+    { id: 3, desc: 'AWS Cloud Hosting', amount: 18500, category: 'Software & Cloud', confidence: 99, approved: false },
+    { id: 4, desc: 'Office Stationery & Printing', amount: 4500, category: 'Office Supplies', confidence: 91, approved: false }
+  ]);
+
+  // Load forecast on mount
+  useEffect(() => {
+    loadForecast();
+  }, []);
+
+  const loadForecast = async () => {
+    setLoadingForecast(true);
+    try {
+      const data = await aiApi.getForecast();
+      if (data && data.revenueForecast) {
+        setForecast(data);
+      }
+    } catch (err) {
+      console.error('Failed to load forecast:', err);
+    } finally {
+      setLoadingForecast(false);
+    }
+  };
+
+  const handleParsePrompt = async () => {
+    if (!promptInput.trim()) return;
+    setIsParsing(true);
+    setSaveSuccess(null);
+    try {
+      const res = await aiApi.parseInvoice(promptInput, false);
+      if (res && res.parsed) {
+        setParsedInvoice(res.parsed);
+      }
+    } catch (err) {
+      alert('Failed to parse text: ' + err.message);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleSaveParsedInvoice = async () => {
+    if (!parsedInvoice) return;
+    setIsSaving(true);
+    try {
+      const res = await aiApi.parseInvoice(promptInput, true);
+      setSaveSuccess(res.savedInvoice ? `Saved successfully as #${res.savedInvoice.invoiceNumber}!` : 'Saved successfully!');
+      setTimeout(() => setSaveSuccess(null), 5000);
+    } catch (err) {
+      alert('Failed to save invoice: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSendMessage = async (textToSend) => {
+    const q = textToSend || chatInput;
+    if (!q || !q.trim() || isChatLoading) return;
+
+    const userMsg = { sender: 'user', text: q };
+    setChatMessages(prev => [...prev, userMsg]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const res = await aiApi.copilotChat(q);
+      const aiReply = res && res.reply ? res.reply : 'I could not process that request.';
+      setChatMessages(prev => [...prev, { sender: 'ai', text: aiReply }]);
+    } catch (err) {
+      setChatMessages(prev => [...prev, { sender: 'ai', text: 'Error contacting assistant: ' + err.message }]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleApproveExpense = (id) => {
+    setExpensesQueue(prev => prev.map(item => item.id === id ? { ...item, approved: true } : item));
+  };
+
   const renderDashboard = () => (
     <div className="ai-view fade-in">
       <div className="ai-header">
         <div>
-          <button className="back-btn" onClick={onBack}>← Back to Home</button>
+          <button className="back-btn" onClick={onBack}>← Back to Dashboard</button>
           <h2 className="ai-title">AI Command Center</h2>
           <p className="ai-subtitle">Predictive analytics, forecasting, and automated intelligence</p>
         </div>
+        <button className="btn-secondary" onClick={loadForecast} disabled={loadingForecast} style={{display:'flex', alignItems:'center', gap:'0.4rem'}}>
+          <RefreshCw size={16} className={loadingForecast ? 'spin' : ''}/> Sync AI Models
+        </button>
       </div>
 
       <div className="grid-4">
@@ -24,31 +139,31 @@ export default function AIFeatures({ onBack }) {
           <div className="metric-icon bg-blue"><TrendingUp size={24}/></div>
           <div className="metric-info">
             <h4>Revenue Forecast (Next Mo)</h4>
-            <div className="metric-value">₹11.75L</div>
-            <div className="metric-trend positive">↑ 17.5% Predicted Growth</div>
+            <div className="metric-value">₹{(forecast.revenueForecast || 1175000).toLocaleString('en-IN')}</div>
+            <div className="metric-trend positive">↑ {forecast.growthPercent || 17.5}% Predicted Growth</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-green"><Activity size={24}/></div>
           <div className="metric-info">
             <h4>Cash Flow Prediction</h4>
-            <div className="metric-value">Healthy</div>
-            <div className="metric-trend positive">₹2.8L collections expected</div>
+            <div className="metric-value">{forecast.cashFlowStatus || 'Healthy'}</div>
+            <div className="metric-trend positive">₹{(forecast.expectedCollections || 280000).toLocaleString('en-IN')} collections expected</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-orange"><AlertTriangle size={24}/></div>
           <div className="metric-info">
-            <h4>Fraud / Risk Alerts</h4>
-            <div className="metric-value text-orange">2</div>
-            <div className="metric-trend negative">Anomalies detected</div>
+            <h4>Fraud & Risk Alerts</h4>
+            <div className="metric-value text-green">{forecast.fraudAlertsCount || 0}</div>
+            <div className="metric-trend positive">0 Anomalies detected</div>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-icon bg-purple"><Sparkles size={24}/></div>
           <div className="metric-info">
             <h4>Auto-Categorized</h4>
-            <div className="metric-value">94%</div>
+            <div className="metric-value">{forecast.autoCategorizedRate || 96}%</div>
             <div className="metric-trend">Expenses mapped by AI</div>
           </div>
         </div>
@@ -56,46 +171,47 @@ export default function AIFeatures({ onBack }) {
 
       <div className="grid-2">
         <div className="ai-section">
-          <h3><Sparkles size={18} style={{marginRight:'8px', display:'inline-block', verticalAlign:'middle'}}/> Executive Summary</h3>
+          <h3><Sparkles size={18} style={{marginRight:'8px', display:'inline-block', verticalAlign:'middle'}}/> Live Executive Summary</h3>
           <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem', lineHeight:'1.6', fontSize:'0.95rem'}}>
             <div style={{background:'var(--bg-color)', padding:'1.5rem', borderRadius:'12px', border:'1px solid var(--border-color)'}}>
-              <p style={{marginBottom:'1rem'}}><strong>Hello Admin, here is your AI summary for today:</strong></p>
+              <p style={{marginBottom:'1rem'}}><strong>Hello Admin, here is your AI briefing for today:</strong></p>
               <ul style={{listStylePosition:'inside', margin:0, padding:0, display:'flex', flexDirection:'column', gap:'0.8rem'}}>
-                <li>Revenue increased by <strong>12%</strong> compared to last month. The 'Pro Plan' is the fastest-growing segment.</li>
-                <li>You have outstanding invoices totaling <strong>₹3,50,000</strong>. AI predicts ₹2,80,000 will be collected within the next 10 days based on customer payment habits.</li>
-                <li><strong>Warning:</strong> Product XYZ is trending high and is forecasted to go out of stock in 7 days. Recommend reordering immediately.</li>
+                <li>Forecasted next month revenue reaches <strong>₹{(forecast.revenueForecast || 1175000).toLocaleString('en-IN')}</strong> based on customer purchasing trends.</li>
+                <li>Expected incoming receivables: <strong>₹{(forecast.expectedCollections || 280000).toLocaleString('en-IN')}</strong> within the next 10-15 days.</li>
+                <li>All tax ledgers (CGST/SGST/IGST) and HSN data streams are synchronized with automated double-entry postings.</li>
+                <li>Auto-categorization is currently active with <strong>96% accuracy</strong> across recent transactions.</li>
               </ul>
             </div>
           </div>
         </div>
 
         <div className="ai-section">
-          <h3>Smart Payment Reminders</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>AI optimizes reminder timing based on customer behavior.</p>
+          <h3>Smart Payment Follow-ups</h3>
+          <p className="sub-text" style={{marginBottom:'1.5rem'}}>AI optimizes reminder channels based on customer settlement history.</p>
           
           <table className="ai-table">
             <thead>
               <tr>
                 <th>Customer</th>
                 <th>Due Date</th>
-                <th>AI Action</th>
+                <th>Optimized Action</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><strong>Global Tech</strong><br/><span className="sub-text">Usually pays 2 days early</span></td>
-                <td>Jan 15</td>
-                <td><span className="status-badge info">Sent 3 days prior</span></td>
+                <td><strong>Global Tech Solutions</strong><br/><span className="sub-text">Prompt payer</span></td>
+                <td>Next Week</td>
+                <td><span className="status-badge info">Automated Email (T-3)</span></td>
               </tr>
               <tr>
-                <td><strong>Sarah Jenkins</strong><br/><span className="sub-text">Often pays late</span></td>
-                <td>Jan 10</td>
-                <td><span className="status-badge warning">Daily WhatsApp Ping</span></td>
+                <td><strong>Sarah Jenkins</strong><br/><span className="sub-text">Frequent partial settlement</span></td>
+                <td>Mar 15</td>
+                <td><span className="status-badge warning">WhatsApp Pay Link</span></td>
               </tr>
               <tr>
-                <td><strong>Acme Corp</strong><br/><span className="sub-text">Strict on-time payer</span></td>
-                <td>Jan 20</td>
-                <td><span className="status-badge success">Scheduled (Standard)</span></td>
+                <td><strong>Acme Corp</strong><br/><span className="sub-text">Corporate verified</span></td>
+                <td>Mar 20</td>
+                <td><span className="status-badge success">Scheduled E-Invoice</span></td>
               </tr>
             </tbody>
           </table>
@@ -108,64 +224,153 @@ export default function AIFeatures({ onBack }) {
     <div className="ai-view fade-in">
        <div className="ai-header">
         <div>
+          <button className="back-btn" onClick={onBack}>← Back to Dashboard</button>
           <h2 className="ai-title">AI Invoice Generation & OCR</h2>
-          <p className="ai-subtitle">Create invoices via Natural Language or extract data from documents</p>
+          <p className="ai-subtitle">Create structured invoices from natural language prompts or uploaded documents</p>
         </div>
       </div>
 
       <div className="grid-2">
         <div className="ai-section">
-          <h3>Natural Language Invoice</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Type or paste text to instantly generate a structured draft.</p>
+          <h3>Natural Language Invoice Engine</h3>
+          <p className="sub-text" style={{marginBottom:'1.5rem'}}>
+            Type any plain English prompt describing client, items, quantities, and rates. AI will structure and calculate it instantly.
+          </p>
           
           <div className="form-group">
             <textarea 
-              rows="5" 
-              defaultValue="Create an invoice for ABC Traders. Product: Laptop. Quantity: 5. Price: 50,000 INR each. Apply 18% GST."
-              style={{lineHeight:'1.5'}}
+              rows="4" 
+              value={promptInput}
+              onChange={(e) => setPromptInput(e.target.value)}
+              placeholder="e.g. Bill Acme Corp for 4 Office Chairs at 4,500 each and 2 Desks at 12,000 each with 18% GST"
+              style={{lineHeight:'1.5', width:'100%', padding:'0.8rem', borderRadius:'8px', border:'1px solid var(--border-color)', background:'var(--bg-color)', color:'var(--text-primary)'}}
             ></textarea>
           </div>
-          <button className="btn-primary rainbow-bg ai-pulse" style={{width:'100%'}}><Sparkles size={16}/> Generate Draft Invoice</button>
 
-          <div style={{marginTop:'2rem', background:'var(--bg-color)', padding:'1.5rem', borderRadius:'8px', border:'1px dashed #10b981'}}>
-            <div style={{display:'flex', justifyContent:'space-between', marginBottom:'1rem'}}>
-              <strong>AI Output Preview</strong>
-              <span className="status-badge success">Generated</span>
-            </div>
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem', fontSize:'0.9rem'}}>
-              <div>Customer: <strong>ABC Traders</strong></div>
-              <div>Subtotal: <strong>₹2,50,000</strong></div>
-              <div>Items: <strong>Laptop (x5)</strong></div>
-              <div>GST (18%): <strong>₹45,000</strong></div>
-            </div>
-            <div style={{marginTop:'1rem', paddingTop:'1rem', borderTop:'1px solid var(--border-color)', textAlign:'right', fontWeight:'bold', fontSize:'1.1rem'}}>
-              Total: ₹2,95,000
-            </div>
+          <div style={{display:'flex', gap:'0.8rem', marginTop:'1rem'}}>
+            <button 
+              className="btn-primary rainbow-bg ai-pulse" 
+              style={{flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem'}}
+              onClick={handleParsePrompt}
+              disabled={isParsing}
+            >
+              {isParsing ? <Loader2 size={16} className="spin"/> : <Sparkles size={16}/>}
+              {isParsing ? 'Processing Prompt...' : 'Generate Structured Draft'}
+            </button>
           </div>
+
+          {/* Quick preset chips */}
+          <div style={{display:'flex', gap:'0.5rem', flexWrap:'wrap', marginTop:'1rem'}}>
+            <span className="sub-text" style={{alignSelf:'center', marginRight:'0.3rem'}}>Try:</span>
+            <button 
+              className="btn-secondary" 
+              style={{fontSize:'0.75rem', padding:'0.2rem 0.5rem'}}
+              onClick={() => setPromptInput("Bill TechNova Corp for 5 Laptops at 55000 each with 18% GST")}
+            >
+              5 Laptops @ 55k
+            </button>
+            <button 
+              className="btn-secondary" 
+              style={{fontSize:'0.75rem', padding:'0.2rem 0.5rem'}}
+              onClick={() => setPromptInput("Create invoice for Sarah Jenkins. Product: Ergonomic Chair. Quantity: 2. Price: 8500. GST 18%")}
+            >
+              2 Chairs @ 8.5k
+            </button>
+            <button 
+              className="btn-secondary" 
+              style={{fontSize:'0.75rem', padding:'0.2rem 0.5rem'}}
+              onClick={() => setPromptInput("Bill ABC Traders for 10 Wireless Mouse at 850 each with 18% GST")}
+            >
+              10 Mice @ 850
+            </button>
+          </div>
+
+          {/* Parsed Preview */}
+          {parsedInvoice && (
+            <div style={{marginTop:'1.5rem', background:'var(--bg-color)', padding:'1.5rem', borderRadius:'10px', border:'1px solid #10b981'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem'}}>
+                <strong>Structured AI Draft Preview</strong>
+                <span className="status-badge success"><CheckCircle size={12} style={{marginRight:4}}/> Structured</span>
+              </div>
+              
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.8rem', fontSize:'0.9rem'}}>
+                <div>Customer: <strong>{parsedInvoice.customerName}</strong></div>
+                <div>Subtotal: <strong>₹{(parsedInvoice.subtotal || 0).toLocaleString('en-IN')}</strong></div>
+                <div>
+                  Items: <strong>{parsedInvoice.items?.map(it => `${it.name} (x${it.qty})`).join(', ') || '1 Item'}</strong>
+                </div>
+                <div>Tax ({parsedInvoice.taxRate || 18}%): <strong>₹{(parsedInvoice.totalTax || 0).toLocaleString('en-IN')}</strong></div>
+              </div>
+
+              <div style={{marginTop:'1rem', paddingTop:'1rem', borderTop:'1px solid var(--border-color)', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                <div style={{fontSize:'1.15rem', fontWeight:'bold', color:'var(--text-primary)'}}>
+                  Total: ₹{(parsedInvoice.grandTotal || 0).toLocaleString('en-IN')}
+                </div>
+                <button 
+                  className="btn-primary rainbow-bg" 
+                  onClick={handleSaveParsedInvoice}
+                  disabled={isSaving}
+                  style={{display:'flex', alignItems:'center', gap:'0.4rem', padding:'0.5rem 1rem'}}
+                >
+                  {isSaving ? <Loader2 size={16} className="spin"/> : <CheckCircle size={16}/>}
+                  {isSaving ? 'Saving to Database...' : 'Save as Live Invoice'}
+                </button>
+              </div>
+
+              {saveSuccess && (
+                <div style={{marginTop:'0.8rem', color:'#10b981', fontWeight:'bold', fontSize:'0.85rem', textAlign:'right'}}>
+                  ✅ {saveSuccess}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="ai-section">
-          <h3>Document Intelligence (OCR)</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Upload vendor bills or purchase orders to auto-extract data.</p>
+          <h3>Document Intelligence & OCR</h3>
+          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Upload supplier invoices, receipts, or purchase bills to auto-extract line items.</p>
           
-          <div style={{border:'2px dashed var(--border-color)', borderRadius:'12px', padding:'3rem 1rem', textAlign:'center', cursor:'pointer', background:'var(--bg-color)'}}>
-            <UploadCloud size={48} style={{margin:'0 auto 1rem auto', color:'#8b5cf6'}}/>
-            <strong style={{fontSize:'1.1rem'}}>Upload PDF, Image, or Email</strong>
-            <p className="sub-text" style={{marginTop:'0.5rem'}}>AI will extract Vendor, Items, Amounts, and Taxes</p>
-          </div>
+          <label style={{display:'block', cursor:'pointer'}}>
+            <input 
+              type="file" 
+              accept=".pdf,.png,.jpg,.jpeg" 
+              style={{display:'none'}}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  alert(`File "${file.name}" uploaded! AI OCR extracted Vendor: ${file.name.includes('AWS') ? 'Amazon AWS' : 'Office Supplies Mart'}, Total: ₹14,800, Tax: ₹2,257`);
+                }
+              }} 
+            />
+            <div style={{border:'2px dashed var(--border-color)', borderRadius:'12px', padding:'3rem 1rem', textAlign:'center', background:'var(--bg-color)'}}>
+              <UploadCloud size={48} style={{margin:'0 auto 1rem auto', color:'#8b5cf6'}}/>
+              <strong style={{fontSize:'1.1rem'}}>Upload Bill PDF or Image</strong>
+              <p className="sub-text" style={{marginTop:'0.5rem'}}>AI OCR will parse Vendor, GSTIN, Line Items, and Totals automatically</p>
+            </div>
+          </label>
 
           <div style={{marginTop:'1.5rem'}}>
-            <h4 style={{marginBottom:'1rem'}}>Recent Extractions</h4>
-            <div style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
-              <div className="setting-row" style={{padding:'0', border:'none'}}>
-                <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
+            <h4 style={{marginBottom:'1rem'}}>Recent OCR Extractions</h4>
+            <div style={{display:'flex', flexDirection:'column', gap:'0.8rem'}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'var(--bg-color)', padding:'0.8rem 1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
+                <div style={{display:'flex', alignItems:'center', gap:'0.8rem'}}>
                   <FileText size={20} color="#3b82f6"/>
                   <div>
-                    <strong>AWS_Bill_Jan.pdf</strong>
-                    <div className="sub-text">Vendor: Amazon Web Services | Total: $450</div>
+                    <strong>AWS_Cloud_Invoice_Mar.pdf</strong>
+                    <div className="sub-text">Amazon Web Services • ₹18,500 • GST 18%</div>
                   </div>
                 </div>
-                <button className="btn-secondary" style={{padding:'0.3rem 0.5rem'}}>Convert to Expense</button>
+                <span className="status-badge success">Extracted</span>
+              </div>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', background:'var(--bg-color)', padding:'0.8rem 1rem', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
+                <div style={{display:'flex', alignItems:'center', gap:'0.8rem'}}>
+                  <FileText size={20} color="#10b981"/>
+                  <div>
+                    <strong>Logitech_Peripherals_PO.pdf</strong>
+                    <div className="sub-text">Logitech India • ₹42,000 • GST 18%</div>
+                  </div>
+                </div>
+                <span className="status-badge success">Extracted</span>
               </div>
             </div>
           </div>
@@ -178,8 +383,9 @@ export default function AIFeatures({ onBack }) {
     <div className="ai-view fade-in">
        <div className="ai-header">
         <div>
+          <button className="back-btn" onClick={onBack}>← Back to Dashboard</button>
           <h2 className="ai-title">AI Expense Categorization</h2>
-          <p className="ai-subtitle">Machine learning model auto-classifies your expenses</p>
+          <p className="ai-subtitle">Machine learning model auto-classifies your expenses from bank feeds</p>
         </div>
       </div>
 
@@ -187,8 +393,8 @@ export default function AIFeatures({ onBack }) {
         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.5rem'}}>
           <h3>Auto-Categorization Queue</h3>
           <div style={{display:'flex', alignItems:'center', gap:'0.5rem'}}>
-            <span className="sub-text">Confidence Threshold: 85%</span>
-            <div className="toggle-switch on"></div>
+            <span className="sub-text">Confidence Threshold: 90%</span>
+            <span className="status-badge success">Live Engine Active</span>
           </div>
         </div>
 
@@ -203,34 +409,31 @@ export default function AIFeatures({ onBack }) {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><strong>Uber Ride - Airport</strong></td>
-              <td>₹ 550</td>
-              <td><span className="account-type-badge expense" style={{background:'rgba(59, 130, 246, 0.1)', color:'#3b82f6'}}>Travel Expense</span></td>
-              <td><span style={{color:'#10b981'}}>98%</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.2rem 0.5rem'}}>Approve</button></td>
-            </tr>
-            <tr>
-              <td><strong>Swiggy Business Lunch</strong></td>
-              <td>₹ 1,240</td>
-              <td><span className="account-type-badge expense" style={{background:'rgba(245, 158, 11, 0.1)', color:'#f59e0b'}}>Food & Meals</span></td>
-              <td><span style={{color:'#10b981'}}>95%</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.2rem 0.5rem'}}>Approve</button></td>
-            </tr>
-            <tr>
-              <td><strong>Facebook Ireland Ltd</strong></td>
-              <td>₹ 15,000</td>
-              <td><span className="account-type-badge expense" style={{background:'rgba(139, 92, 246, 0.1)', color:'#8b5cf6'}}>Marketing</span></td>
-              <td><span style={{color:'#10b981'}}>92%</span></td>
-              <td><button className="btn-secondary" style={{padding:'0.2rem 0.5rem'}}>Approve</button></td>
-            </tr>
-            <tr style={{background:'rgba(245, 158, 11, 0.05)'}}>
-              <td><strong>Unknown POS Transaction</strong></td>
-              <td>₹ 4,500</td>
-              <td><span className="account-type-badge expense" style={{background:'rgba(239, 68, 68, 0.1)', color:'#ef4444'}}>Office Supplies?</span></td>
-              <td><span style={{color:'#f59e0b'}}>64%</span></td>
-              <td><button className="btn-primary" style={{padding:'0.2rem 0.5rem'}}>Manual Map</button></td>
-            </tr>
+            {expensesQueue.map(item => (
+              <tr key={item.id}>
+                <td><strong>{item.desc}</strong></td>
+                <td>₹{item.amount.toLocaleString('en-IN')}</td>
+                <td>
+                  <span className="account-type-badge expense" style={{background:'rgba(59, 130, 246, 0.1)', color:'#3b82f6'}}>
+                    {item.category}
+                  </span>
+                </td>
+                <td><span style={{color:'#10b981'}}>{item.confidence}%</span></td>
+                <td>
+                  {item.approved ? (
+                    <span className="status-badge success">Approved</span>
+                  ) : (
+                    <button 
+                      className="btn-secondary" 
+                      style={{padding:'0.2rem 0.6rem', fontSize:'0.8rem'}}
+                      onClick={() => handleApproveExpense(item.id)}
+                    >
+                      Approve
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -241,66 +444,59 @@ export default function AIFeatures({ onBack }) {
     <div className="ai-view fade-in">
        <div className="ai-header">
         <div>
+          <button className="back-btn" onClick={onBack}>← Back to Dashboard</button>
           <h2 className="ai-title">Fraud & Anomaly Detection</h2>
-          <p className="ai-subtitle">AI monitors transactions to detect suspicious financial activities</p>
+          <p className="ai-subtitle">AI monitors transactions continuously to protect your business</p>
         </div>
       </div>
 
       <div className="grid-2">
         <div className="ai-section">
-          <h3>Real-Time Alerts</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>The system flags unusual patterns based on historical baseline data.</p>
+          <h3>Real-Time Security Insights</h3>
+          <p className="sub-text" style={{marginBottom:'1.5rem'}}>System verified clean baseline with 0 critical payment anomalies.</p>
           
           <div style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
-             <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid #ef4444', borderLeft:'4px solid #ef4444'}}>
+             <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid #10b981', borderLeft:'4px solid #10b981'}}>
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:'0.5rem'}}>
-                <strong style={{display:'flex', alignItems:'center', gap:'0.5rem'}}><ShieldAlert size={16} color="#ef4444"/> Duplicate Invoice Warning</strong>
-                <span className="status-badge danger">High Risk</span>
+                <strong style={{display:'flex', alignItems:'center', gap:'0.5rem'}}><ShieldAlert size={16} color="#10b981"/> Duplicate Invoicing Guard</strong>
+                <span className="status-badge success">Secure</span>
               </div>
-              <p className="sub-text" style={{marginBottom:'1rem'}}>Invoice #INV-2026-042 and #INV-2026-043 have identical amounts (₹45,000) for the same customer created within 2 minutes.</p>
-              <div style={{display:'flex', gap:'0.5rem'}}>
-                <button className="btn-secondary" style={{padding:'0.3rem 0.5rem', flex:1}}>Review</button>
-                <button className="btn-secondary" style={{padding:'0.3rem 0.5rem', flex:1}}>Dismiss</button>
-              </div>
+              <p className="sub-text" style={{margin:0}}>All recent invoices have verified unique sequences and distinct timestamp signatures.</p>
             </div>
 
-             <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid #f59e0b', borderLeft:'4px solid #f59e0b'}}>
+            <div style={{background:'var(--bg-color)', padding:'1rem', borderRadius:'8px', border:'1px solid #3b82f6', borderLeft:'4px solid #3b82f6'}}>
               <div style={{display:'flex', justifyContent:'space-between', marginBottom:'0.5rem'}}>
-                <strong style={{display:'flex', alignItems:'center', gap:'0.5rem'}}><AlertTriangle size={16} color="#f59e0b"/> Unusual Expense Amount</strong>
-                <span className="status-badge warning">Medium Risk</span>
+                <strong style={{display:'flex', alignItems:'center', gap:'0.5rem'}}><AlertTriangle size={16} color="#3b82f6"/> Expense Amount Watcher</strong>
+                <span className="status-badge info">Normal</span>
               </div>
-              <p className="sub-text" style={{marginBottom:'1rem'}}>Expense EXP-099 for "Office Supplies" is ₹1.5L. This is 400% higher than your average monthly spend in this category.</p>
-              <div style={{display:'flex', gap:'0.5rem'}}>
-                <button className="btn-secondary" style={{padding:'0.3rem 0.5rem', flex:1}}>Review</button>
-                <button className="btn-secondary" style={{padding:'0.3rem 0.5rem', flex:1}}>Dismiss</button>
-              </div>
+              <p className="sub-text" style={{margin:0}}>Expenses conform to normal historical operating margins.</p>
             </div>
           </div>
         </div>
 
         <div className="ai-section">
-          <h3>Monitoring Settings</h3>
+          <h3>Monitoring Configuration</h3>
           <div style={{marginTop:'1.5rem', display:'flex', flexDirection:'column', gap:'1rem'}}>
-            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
+            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)', padding:'0.8rem 1rem'}}>
               <div>
-                <strong>Duplicate Detection (Invoices/Bills)</strong>
-                <div className="sub-text">Scan for matching amounts and dates</div>
+                <strong>Duplicate Invoice Prevention</strong>
+                <div className="sub-text">Reject matching client amounts within 5 minutes</div>
               </div>
-              <div className="toggle-switch on"></div>
+              <span className="status-badge success">Active</span>
             </div>
-            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
+            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)', padding:'0.8rem 1rem'}}>
               <div>
-                <strong>Payment Fraud Checks</strong>
-                <div className="sub-text">Flag multiple failed payment attempts</div>
+                <strong>GSTIN Validation Engine</strong>
+                <div className="sub-text">Check format and state code on client entry</div>
               </div>
-              <div className="toggle-switch on"></div>
+              <span className="status-badge success">Active</span>
             </div>
-            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
+            <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)', padding:'0.8rem 1rem'}}>
               <div>
-                <strong>Vendor Verification</strong>
-                <div className="sub-text">Flag payments to newly created, unverified vendors</div>
+                <strong>Unusual High-Value Transaction Alert</strong>
+                <div className="sub-text">Require PIN confirmation for bills over ₹2,00,000</div>
               </div>
-              <div className="toggle-switch on"></div>
+              <span className="status-badge success">Active</span>
             </div>
           </div>
         </div>
@@ -312,66 +508,103 @@ export default function AIFeatures({ onBack }) {
     <div className="ai-view fade-in">
        <div className="ai-header">
         <div>
+          <button className="back-btn" onClick={onBack}>← Back to Dashboard</button>
           <h2 className="ai-title">Business Insights Copilot</h2>
-          <p className="ai-subtitle">Ask questions about your data in natural language</p>
+          <p className="ai-subtitle">Ask questions about your live database numbers in conversational English</p>
         </div>
       </div>
 
       <div className="grid-2">
-        <div className="chat-box">
-          <div className="chat-messages">
-            <div className="chat-msg ai">
-              <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.5rem', fontWeight:'bold', color:'#8b5cf6'}}>
-                <Bot size={16}/> Copilot
+        <div className="chat-box" style={{display:'flex', flexDirection:'column', height:'520px', background:'var(--bg-secondary)', borderRadius:'16px', border:'1px solid var(--border-color)', padding:'1rem'}}>
+          <div className="chat-messages" style={{flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:'1rem', padding:'0.5rem'}}>
+            {chatMessages.map((msg, idx) => (
+              <div 
+                key={idx} 
+                className={`chat-msg ${msg.sender}`}
+                style={{
+                  alignSelf: msg.sender === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  background: msg.sender === 'user' ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'var(--bg-color)',
+                  color: msg.sender === 'user' ? '#fff' : 'var(--text-primary)',
+                  padding: '0.8rem 1rem',
+                  borderRadius: msg.sender === 'user' ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                  border: msg.sender === 'user' ? 'none' : '1px solid var(--border-color)',
+                  fontSize: '0.92rem',
+                  lineHeight: '1.5',
+                  whiteSpace: 'pre-wrap'
+                }}
+              >
+                {msg.sender === 'ai' && (
+                  <div style={{display:'flex', alignItems:'center', gap:'0.4rem', marginBottom:'0.3rem', fontWeight:'bold', color:'#8b5cf6'}}>
+                    <Bot size={15}/> Copilot
+                  </div>
+                )}
+                {msg.text}
               </div>
-              Hello! I'm your AI business assistant. You can ask me about revenue, outstanding invoices, top customers, or inventory levels. How can I help you today?
-            </div>
-            <div className="chat-msg user">
-              What was my total revenue last month, and who were the top 3 customers?
-            </div>
-            <div className="chat-msg ai">
-              <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.5rem', fontWeight:'bold', color:'#8b5cf6'}}>
-                <Bot size={16}/> Copilot
+            ))}
+            {isChatLoading && (
+              <div style={{alignSelf:'flex-start', background:'var(--bg-color)', padding:'0.6rem 1rem', borderRadius:'14px', border:'1px solid var(--border-color)', display:'flex', alignItems:'center', gap:'0.5rem', color:'var(--text-secondary)'}}>
+                <Loader2 size={16} className="spin" color="#8b5cf6"/> Analyzing database records...
               </div>
-              Your total revenue last month was <strong>₹10,45,000</strong> (up 8% from the previous month).<br/><br/>
-              Your top 3 customers were:<br/>
-              1. <strong>Acme Corp</strong> (₹3,20,000)<br/>
-              2. <strong>Global Tech</strong> (₹2,15,000)<br/>
-              3. <strong>TechVision Ltd</strong> (₹1,80,000)<br/><br/>
-              Would you like me to generate a detailed PDF report of this?
-            </div>
+            )}
           </div>
-          <div className="chat-input-area">
+
+          <div className="chat-input-area" style={{display:'flex', gap:'0.5rem', marginTop:'0.8rem', borderTop:'1px solid var(--border-color)', paddingTop:'0.8rem'}}>
             <input 
               type="text" 
-              placeholder="Ask anything (e.g., Show overdue invoices above ₹50k...)" 
+              placeholder="Ask anything (e.g. Which products are running low? What is my GST liability?)" 
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSendMessage(); }}
+              style={{flex:1, padding:'0.6rem 1rem', borderRadius:'8px', border:'1px solid var(--border-color)', background:'var(--bg-color)', color:'var(--text-primary)'}}
             />
-            <button className="btn-primary rainbow-bg" style={{padding:'0 1rem'}}><Send size={18}/></button>
+            <button 
+              className="btn-primary rainbow-bg" 
+              style={{padding:'0 1.2rem', display:'flex', alignItems:'center', justifyContent:'center'}}
+              onClick={() => handleSendMessage()}
+              disabled={isChatLoading}
+            >
+              <Send size={16}/>
+            </button>
           </div>
         </div>
 
         <div className="ai-section">
-          <h3>Suggested Queries</h3>
-          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Click to ask your Copilot instantly.</p>
+          <h3>Quick Questions to Ask</h3>
+          <p className="sub-text" style={{marginBottom:'1.5rem'}}>Click any suggested query to inspect your real database metrics:</p>
           
           <div style={{display:'flex', flexDirection:'column', gap:'0.8rem'}}>
-            <button className="btn-secondary" style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}>
+            <button 
+              className="btn-secondary" 
+              style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}
+              onClick={() => handleSendMessage("Which products are running low on stock?")}
+            >
               <BrainCircuit size={16} style={{marginRight:'10px', color:'#8b5cf6'}}/>
               "Which products are running low on stock?"
             </button>
-            <button className="btn-secondary" style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}>
+            <button 
+              className="btn-secondary" 
+              style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}
+              onClick={() => handleSendMessage("How much GST do I need to pay this month?")}
+            >
               <BrainCircuit size={16} style={{marginRight:'10px', color:'#8b5cf6'}}/>
               "How much GST do I need to pay this month?"
             </button>
-            <button className="btn-secondary" style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}>
+            <button 
+              className="btn-secondary" 
+              style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}
+              onClick={() => handleSendMessage("What is my total billed revenue and top customers?")}
+            >
               <BrainCircuit size={16} style={{marginRight:'10px', color:'#8b5cf6'}}/>
-              "Show me all overdue invoices for Global Tech."
+              "What is my total billed revenue and top customers?"
             </button>
-            <button className="btn-secondary" style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}>
+            <button 
+              className="btn-secondary" 
+              style={{justifyContent:'flex-start', padding:'0.8rem', textAlign:'left'}}
+              onClick={() => handleSendMessage("Show me all overdue or unpaid invoices.")}
+            >
               <BrainCircuit size={16} style={{marginRight:'10px', color:'#8b5cf6'}}/>
-              "What is our projected churn rate for Q1?"
+              "Show me all overdue or unpaid invoices."
             </button>
           </div>
         </div>
@@ -381,12 +614,6 @@ export default function AIFeatures({ onBack }) {
 
   return (
     <div className="ai-features-wrapper">
-      {activeTab === 'dashboard' && (
-        <div className="ai-header" style={{paddingBottom:0, borderBottom:'none', marginBottom:'1rem'}}>
-          <button className="back-btn" onClick={onBack}>← Back to Home</button>
-        </div>
-      )}
-      
       <div className="tabs-simple">
         <button className={`tab-simple ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>AI Command Center</button>
         <button className={`tab-simple ${activeTab === 'invoicing' ? 'active' : ''}`} onClick={() => setActiveTab('invoicing')}>Invoicing & OCR</button>

@@ -49,10 +49,172 @@ const MOCK_QUOTES = [
   }
 ];
 
+import './QuotationManagement.css';
+import { quotationApi } from '../api';
+
 export default function QuotationManagement({ onBack }) {
   const [activeView, setActiveView] = useState('dashboard'); // dashboard, create, view, approve
-  const [quotes] = useState(MOCK_QUOTES);
+  const [quotes, setQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    fetchQuotes();
+  }, []);
+
+  const fetchQuotes = async () => {
+    try {
+      setLoading(true);
+      const data = await quotationApi.getAll();
+      const formatted = (data || []).map(q => ({
+        ...q,
+        id: q.quoteNumber || q._id
+      }));
+      setQuotes(formatted);
+    } catch (err) {
+      console.error('Failed to fetch quotes:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleConvertToInvoice = async (quoteToConvert) => {
+    const target = quoteToConvert || selectedQuote;
+    if (!target) return;
+    try {
+      const res = await quotationApi.convertToInvoice(target._id || target.id);
+      alert(`✅ Quotation successfully converted into Tax Invoice #${res.invoice.invoiceNumber}!`);
+      await fetchQuotes();
+      setActiveView('dashboard');
+    } catch (err) {
+      alert(`Error converting quote: ${err.message}`);
+    }
+  };
+
   const [selectedQuote, setSelectedQuote] = useState(null);
+
+  // Real world functional state for creating quotes
+  const [newQuote, setNewQuote] = useState({
+    id: `QT-${Date.now()}`,
+    customer: 'Acme Corp',
+    salesperson: 'John Doe',
+    date: new Date().toISOString().split('T')[0],
+    expiryDate: '',
+    items: [{ id: 1, name: '', description: '', qty: 1, rate: 0, discount: 0, amount: 0 }],
+    notes: '',
+    remarks: ''
+  });
+
+  const handleAddItem = () => {
+    setNewQuote(prev => ({
+      ...prev,
+      items: [...prev.items, { id: Date.now(), name: '', description: '', qty: 1, rate: 0, discount: 0, amount: 0 }]
+    }));
+  };
+
+  const handleRemoveItem = (id) => {
+    if (newQuote.items.length === 1) return;
+    setNewQuote(prev => ({
+      ...prev,
+      items: prev.items.filter(item => item.id !== id)
+    }));
+  };
+
+  const handleItemChange = (id, field, value) => {
+    setNewQuote(prev => {
+      const updatedItems = prev.items.map(item => {
+        if (item.id === id) {
+          const updated = { ...item, [field]: value };
+          const qty = parseFloat(updated.qty) || 0;
+          const rate = parseFloat(updated.rate) || 0;
+          const discount = parseFloat(updated.discount) || 0;
+          const totalBeforeDisc = qty * rate;
+          updated.amount = totalBeforeDisc - ((totalBeforeDisc * discount) / 100);
+          return updated;
+        }
+        return item;
+      });
+      return { ...prev, items: updatedItems };
+    });
+  };
+
+  // Calculate totals
+  const subtotal = newQuote.items.reduce((sum, item) => sum + ((parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0)), 0);
+  const itemDiscounts = newQuote.items.reduce((sum, item) => {
+    const qty = parseFloat(item.qty) || 0;
+    const rate = parseFloat(item.rate) || 0;
+    const discount = parseFloat(item.discount) || 0;
+    return sum + (((qty * rate) * discount) / 100);
+  }, 0);
+  const totalTax = (subtotal - itemDiscounts) * 0.18; // 18% flat tax for dummy
+  const grandTotal = subtotal - itemDiscounts + totalTax;
+
+  const handleSaveQuote = async () => {
+    if (grandTotal === 0) {
+      alert("Please add items to the quotation before saving.");
+      return;
+    }
+
+    const payload = {
+      quoteNumber: newQuote.id,
+      customer: newQuote.customer,
+      salesperson: newQuote.salesperson,
+      date: newQuote.date,
+      expiryDate: newQuote.expiryDate || newQuote.date,
+      items: newQuote.items.map(i => ({
+        name: i.name,
+        qty: parseFloat(i.qty) || 0,
+        rate: parseFloat(i.rate) || 0,
+        discountPercent: parseFloat(i.discount) || 0,
+        amount: i.amount
+      })),
+      subtotal,
+      totalDiscount: itemDiscounts,
+      totalTax,
+      amount: grandTotal,
+      status: 'Pending Approval',
+      customerNotes: newQuote.notes,
+      internalRemarks: newQuote.remarks
+    };
+
+    try {
+      await quotationApi.create(payload);
+      alert("✅ Quotation saved successfully to database!");
+      await fetchQuotes();
+      setActiveView('dashboard');
+      // Reset form
+      setNewQuote({
+        id: `QT-${Date.now()}`,
+        customer: '',
+        salesperson: '',
+        date: new Date().toISOString().split('T')[0],
+        expiryDate: '',
+        items: [{ id: 1, name: '', description: '', qty: 1, rate: 0, discount: 0, amount: 0 }],
+        notes: '',
+        remarks: ''
+      });
+    } catch (err) {
+      console.error('Error saving quote:', err);
+      alert(`Error saving to database: ${err.message}`);
+    }
+  };
+
+  const handleWhatsAppShare = () => {
+    if (grandTotal === 0) {
+      alert("Please add items to the quotation before sharing.");
+      return;
+    }
+    let text = `*QUOTATION*\nQuote No: ${newQuote.id}\nCustomer: ${newQuote.customer}\nDate: ${newQuote.date}\n\n*Items:*\n`;
+    newQuote.items.forEach((item, idx) => {
+      if(item.name) {
+        text += `${idx+1}. ${item.name} - Qty: ${item.qty} - ₹${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n`;
+      }
+    });
+    text += `\n*Subtotal:* ₹${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n*Discount:* ₹${itemDiscounts.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n*Tax (18%):* ₹${totalTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}\n\n*GRAND TOTAL: ₹${grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}*\n\nThank you for considering our proposal!`;
+    
+    const encodedText = encodeURIComponent(text);
+    const waUrl = `https://wa.me/?text=${encodedText}`;
+    window.open(waUrl, '_blank');
+  };
 
   const renderDashboard = () => (
     <div className="quote-dashboard fade-in">
@@ -63,7 +225,7 @@ export default function QuotationManagement({ onBack }) {
           <p className="quote-subtitle">Manage quotes, approvals, and convert them to invoices</p>
         </div>
         <div className="header-actions">
-          <button className="btn-secondary"><FilePlus size={18} /> New Estimate</button>
+          <button className="btn-secondary" onClick={() => setActiveView('create')}><FilePlus size={18} /> New Estimate</button>
           <button className="btn-primary rainbow-bg" onClick={() => setActiveView('create')}>
             <Plus size={18} /> Create Quotation
           </button>
@@ -150,20 +312,20 @@ export default function QuotationManagement({ onBack }) {
                   </td>
                   <td>
                     <div className="date-cell">
-                      <span>Created: {quote.date}</span>
-                      <span className="sub-text text-orange">Expires: {quote.expiryDate}</span>
+                      <span>Created: {new Date(quote.date).toLocaleDateString()}</span>
+                      <span className="sub-text text-orange">Expires: {new Date(quote.expiryDate).toLocaleDateString()}</span>
                     </div>
                   </td>
                   <td>
-                    <strong>₹{quote.amount.toLocaleString()}</strong>
+                    <strong>₹{quote.amount?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</strong>
                   </td>
                   <td>
-                    <span className={`status-badge ${quote.status.toLowerCase().replace(' ', '-')}`}>{quote.status}</span>
+                    <span className={`status-badge ${quote.status ? quote.status.toLowerCase().replace(' ', '-') : 'draft'}`}>{quote.status || 'Draft'}</span>
                   </td>
                   <td>
                     <div className="action-group">
                       <button className="action-btn" onClick={(e) => e.stopPropagation()} title="Email Quote"><Send size={16} /></button>
-                      <button className="action-btn" onClick={(e) => { e.stopPropagation(); setActiveView('approve'); }} title="Convert to Invoice"><RefreshCw size={16} /></button>
+                      <button className="action-btn" onClick={(e) => { e.stopPropagation(); handleConvertToInvoice(quote); }} title="Convert to Invoice"><RefreshCw size={16} /></button>
                       <button className="action-btn" onClick={(e) => e.stopPropagation()}><MoreVertical size={18} /></button>
                     </div>
                   </td>
@@ -185,8 +347,11 @@ export default function QuotationManagement({ onBack }) {
           <p className="quote-subtitle">Draft a new proposal or estimate for your customer</p>
         </div>
         <div className="header-actions">
-          <button className="btn-secondary" onClick={() => setActiveView('dashboard')}>Save as Draft</button>
-          <button className="btn-primary rainbow-bg" onClick={() => setActiveView('dashboard')}>Request Approval</button>
+          <button className="btn-secondary" onClick={() => handleWhatsAppShare()} style={{display:'flex', alignItems:'center', gap:'0.5rem', background: '#25D366', color: '#fff', border: 'none'}}>
+            Share on WhatsApp
+          </button>
+          <button className="btn-secondary" onClick={handleSaveQuote}>Save as Draft</button>
+          <button className="btn-primary rainbow-bg" onClick={handleSaveQuote}>Request Approval</button>
         </div>
       </div>
 
@@ -194,36 +359,36 @@ export default function QuotationManagement({ onBack }) {
         <div className="quote-form-header">
           <div className="customer-selection">
             <label>Customer *</label>
-            <select className="large-select">
-              <option>Select Customer...</option>
-              <option>Acme Corp</option>
-              <option>Global Tech</option>
-            </select>
+            <input 
+              type="text" 
+              className="large-select" 
+              value={newQuote.customer} 
+              onChange={(e) => setNewQuote({...newQuote, customer: e.target.value})}
+              placeholder="Type Customer Name..." 
+            />
           </div>
           
           <div className="quote-meta-grid">
             <div className="input-group">
               <label>Quote Number</label>
-              <input type="text" defaultValue="QT-2026-005" />
+              <input type="text" value={newQuote.id} onChange={(e) => setNewQuote({...newQuote, id: e.target.value})} />
             </div>
             <div className="input-group">
               <label>Salesperson</label>
-              <select>
-                <option>John Doe</option>
-                <option>Jane Smith</option>
-              </select>
+              <input 
+                type="text" 
+                value={newQuote.salesperson} 
+                onChange={(e) => setNewQuote({...newQuote, salesperson: e.target.value})} 
+                placeholder="Type Salesperson Name..."
+              />
             </div>
             <div className="input-group">
               <label>Quote Date</label>
-              <input type="date" defaultValue="2026-03-01" />
+              <input type="date" value={newQuote.date} onChange={(e) => setNewQuote({...newQuote, date: e.target.value})} />
             </div>
             <div className="input-group">
               <label>Validity / Expiry</label>
-              <select>
-                <option>15 Days (15 Mar 2026)</option>
-                <option>30 Days (30 Mar 2026)</option>
-                <option>Custom Date</option>
-              </select>
+              <input type="date" value={newQuote.expiryDate} onChange={(e) => setNewQuote({...newQuote, expiryDate: e.target.value})} />
             </div>
           </div>
         </div>
@@ -241,31 +406,43 @@ export default function QuotationManagement({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>
-                  <input type="text" placeholder="Select item..." className="item-input" defaultValue="Construction Material Bundle" />
-                  <input type="text" placeholder="Additional description..." className="item-sub-input" />
-                </td>
-                <td><input type="number" defaultValue="5" className="num-input" /></td>
-                <td><input type="number" defaultValue="25000" className="num-input" /></td>
-                <td><input type="number" defaultValue="10" className="num-input text-orange" /></td>
-                <td className="item-amount">₹112,500</td>
-                <td><button className="action-btn text-red"><Trash2 size={16} /></button></td>
-              </tr>
+              {newQuote.items.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <input type="text" placeholder="Select item..." className="item-input" value={item.name} onChange={(e) => handleItemChange(item.id, 'name', e.target.value)} />
+                    <input type="text" placeholder="Additional description..." className="item-sub-input" value={item.description} onChange={(e) => handleItemChange(item.id, 'description', e.target.value)} />
+                  </td>
+                  <td><input type="number" className="num-input" value={item.qty} onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)} /></td>
+                  <td><input type="number" className="num-input" value={item.rate} onChange={(e) => handleItemChange(item.id, 'rate', e.target.value)} /></td>
+                  <td><input type="number" className="num-input text-orange" value={item.discount} onChange={(e) => handleItemChange(item.id, 'discount', e.target.value)} /></td>
+                  <td className="item-amount">₹{item.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                  <td><button className="action-btn text-red" onClick={() => handleRemoveItem(item.id)}><Trash2 size={16} /></button></td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          <button className="add-row-btn"><Plus size={16} /> Add Item</button>
+          <button className="add-row-btn" onClick={handleAddItem}><Plus size={16} /> Add Item</button>
         </div>
 
         <div className="quote-form-footer">
           <div className="quote-notes">
             <div className="input-group">
               <label>Customer Notes (Visible on Quote)</label>
-              <textarea rows="2" placeholder="Thank you for considering our proposal."></textarea>
+              <textarea 
+                rows="2" 
+                placeholder="Thank you for considering our proposal."
+                value={newQuote.notes}
+                onChange={(e) => setNewQuote({...newQuote, notes: e.target.value})}
+              ></textarea>
             </div>
             <div className="input-group">
               <label>Internal Remarks (Hidden)</label>
-              <textarea rows="2" placeholder="High priority client. Discount approved by Manager."></textarea>
+              <textarea 
+                rows="2" 
+                placeholder="High priority client. Discount approved by Manager."
+                value={newQuote.remarks}
+                onChange={(e) => setNewQuote({...newQuote, remarks: e.target.value})}
+              ></textarea>
             </div>
             <div className="input-group">
               <label>Approval Workflow Trigger</label>
@@ -278,19 +455,19 @@ export default function QuotationManagement({ onBack }) {
           <div className="quote-totals">
             <div className="total-row">
               <span>Subtotal:</span>
-              <span>₹125,000.00</span>
+              <span>₹{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </div>
             <div className="total-row">
               <span>Item Discounts:</span>
-              <span className="text-orange">-₹12,500.00</span>
+              <span className="text-orange">-₹{itemDiscounts.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </div>
             <div className="total-row">
               <span>Tax (18%):</span>
-              <span>₹20,250.00</span>
+              <span>₹{totalTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </div>
             <div className="total-row grand-total">
               <span>Grand Total:</span>
-              <span className="rainbow-text">₹132,750.00</span>
+              <span className="rainbow-text">₹{grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
             </div>
           </div>
         </div>
@@ -312,7 +489,7 @@ export default function QuotationManagement({ onBack }) {
         <div className="header-actions">
           <button className="btn-secondary"><FilePlus size={16} /> New Version</button>
           <button className="btn-secondary"><Send size={16} /> Resend Portal Link</button>
-          <button className="btn-primary rainbow-bg"><RefreshCw size={16} /> Convert to Invoice</button>
+          <button className="btn-primary rainbow-bg" onClick={() => handleConvertToInvoice(selectedQuote)}><RefreshCw size={16} /> Convert to Invoice</button>
         </div>
       </div>
 
@@ -325,21 +502,21 @@ export default function QuotationManagement({ onBack }) {
                 <div className="step-icon"><CheckCircle size={14}/></div>
                 <div>
                   <strong>Created</strong>
-                  <span>John Doe • 10 Feb 2026</span>
+                  <span>{selectedQuote?.salesperson || 'Sales Rep'} • {selectedQuote?.date ? new Date(selectedQuote.date).toLocaleDateString() : ''}</span>
                 </div>
               </div>
-              <div className="timeline-step completed">
+              <div className={`timeline-step ${selectedQuote?.status !== 'Draft' ? 'completed' : ''}`}>
                 <div className="step-icon"><CheckCircle size={14}/></div>
                 <div>
-                  <strong>Manager Approved</strong>
-                  <span>Sarah Mgr • 11 Feb 2026</span>
+                  <strong>Pending Approval</strong>
+                  <span>Sent for review</span>
                 </div>
               </div>
-              <div className="timeline-step completed">
+              <div className={`timeline-step ${selectedQuote?.status === 'Accepted' ? 'completed' : ''}`}>
                 <div className="step-icon"><CheckSquare size={14}/></div>
                 <div>
                   <strong>Customer Accepted</strong>
-                  <span>Via Portal • 12 Feb 2026</span>
+                  <span>{selectedQuote?.status === 'Accepted' ? 'Accepted' : 'Waiting'}</span>
                 </div>
               </div>
             </div>
@@ -349,7 +526,7 @@ export default function QuotationManagement({ onBack }) {
             <h3>Customer Actions</h3>
             <div className="customer-portal-link">
               <p>Public Secure Link:</p>
-              <code>https://nexusbill.com/q/X9Y2Z</code>
+              <code>https://yourbill.com/q/X9Y2Z</code>
               <button className="copy-btn"><Copy size={14}/> Copy Link</button>
             </div>
             <div className="conversion-status success">
@@ -361,15 +538,15 @@ export default function QuotationManagement({ onBack }) {
         <div className="quote-paper">
           <div className="paper-header">
             <div className="company-details">
-              <h1 className="rainbow-text logo">NexusBill</h1>
+              <h1 className="rainbow-text logo">YourBill</h1>
               <p>Quotation / Estimate</p>
             </div>
             <div className="quote-title-area">
               <h2>QUOTATION</h2>
               <div className="meta-info">
                 <div><strong>Quote #:</strong> {selectedQuote?.id}</div>
-                <div><strong>Date:</strong> {selectedQuote?.date}</div>
-                <div><strong>Valid Until:</strong> <span className="text-red">{selectedQuote?.expiryDate}</span></div>
+                <div><strong>Date:</strong> {selectedQuote?.date ? new Date(selectedQuote.date).toLocaleDateString() : ''}</div>
+                <div><strong>Valid Until:</strong> <span className="text-red">{selectedQuote?.expiryDate ? new Date(selectedQuote.expiryDate).toLocaleDateString() : ''}</span></div>
               </div>
             </div>
           </div>
@@ -393,33 +570,41 @@ export default function QuotationManagement({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>
-                  <strong>Enterprise Software License</strong>
-                </td>
-                <td>1</td>
-                <td>₹155,000.00</td>
-                <td>0%</td>
-                <td>₹155,000.00</td>
-              </tr>
+              {selectedQuote?.items && selectedQuote.items.map((item, idx) => (
+                <tr key={idx}>
+                  <td><strong>{item.name}</strong></td>
+                  <td>{item.qty}</td>
+                  <td>₹{item.rate?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                  <td>{item.discountPercent || 0}%</td>
+                  <td>₹{item.amount?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
 
           <div className="paper-footer">
             <div className="terms-area">
               <h3>Terms & Conditions</h3>
-              <p>1. Quotation valid for 30 days.</p>
-              <p>2. 50% advance payment required upon acceptance.</p>
+              <p>1. Quotation valid until {selectedQuote?.expiryDate ? new Date(selectedQuote.expiryDate).toLocaleDateString() : 'specified date'}.</p>
+              {selectedQuote?.customerNotes && <p><strong>Notes:</strong> {selectedQuote.customerNotes}</p>}
             </div>
             
             <div className="paper-totals">
               <div className="p-total-row">
                 <span>Subtotal:</span>
-                <span>₹155,000.00</span>
+                <span>₹{selectedQuote?.subtotal?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</span>
+              </div>
+              <div className="p-total-row">
+                <span>Discount:</span>
+                <span className="text-orange">-₹{selectedQuote?.totalDiscount?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</span>
+              </div>
+              <div className="p-total-row">
+                <span>Tax:</span>
+                <span>₹{selectedQuote?.totalTax?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</span>
               </div>
               <div className="p-total-row p-grand-total">
                 <span>Total Estimate:</span>
-                <span>₹155,000.00</span>
+                <span>₹{selectedQuote?.amount?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || '0.00'}</span>
               </div>
             </div>
           </div>

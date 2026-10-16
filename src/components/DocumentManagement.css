@@ -266,3 +266,218 @@
   border: 1px solid var(--border-color);
   gap: 0.5rem;
 }
+
+/* Template Tabs */
+.template-type-tabs {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.type-btn {
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 0.6rem 1.5rem;
+  border-radius: 30px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.type-btn.active {
+  background: #5b4bcf;
+  color: #fff;
+  border-color: #5b4bcf;
+}
+
+/* Templates Grid */
+.invoice-templates-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.invoice-preview-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  height: 450px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  transition: all 0.3s;
+  cursor: pointer;
+}
+
+.invoice-preview-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.preview-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.invoice-preview-card:hover .preview-overlay {
+  opacity: 1;
+}
+
+.preview-overlay .btn-primary {
+  transform: translateY(20px);
+  transition: transform 0.3s;
+  border: none;
+  font-weight: bold;
+}
+
+.invoice-preview-card:hover .preview-overlay .btn-primary {
+  transform: translateY(0);
+}
+
+/* Mockup Styles */
+.invoice-mockup {
+  padding: 1.5rem;
+  height: 100%;
+  color: #333;
+  font-family: sans-serif;
+  font-size: 0.6rem;
+  position: relative;
+}
+
+.mockup-header {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mockup-logo {
+  width: 40px; height: 40px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.mockup-company h4 {
+  font-size: 0.9rem;
+  color: #222;
+  margin-bottom: 0.2rem;
+}
+
+.mockup-title {
+  font-weight: bold;
+  font-size: 0.8rem;
+  color: #555;
+  letter-spacing: 1px;
+}
+
+.mockup-body .mockup-line {
+  height: 6px;
+  background: #f0f0f0;
+  margin-bottom: 0.5rem;
+  border-radius: 3px;
+}
+.mockup-body .mockup-line.short {
+  width: 60%;
+}
+
+.mockup-table {
+  margin-top: 1rem;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+.m-th {
+  height: 20px;
+  background: #fafafa;
+  border-bottom: 1px solid #eee;
+}
+.m-tr {
+  height: 25px;
+  border-bottom: 1px solid #eee;
+}
+
+.mockup-total {
+  text-align: right;
+  font-weight: bold;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+  color: #222;
+}
+
+/* Style 2 Specifics */
+.invoice-mockup.style-2 {
+  background: #fdfdfd;
+}
+.invoice-mockup.style-2 .mockup-header {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border-bottom: none;
+}
+.watermark {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 6rem;
+  opacity: 0.03;
+  pointer-events: none;
+}
+.mockup-table.bordered {
+  border: 2px solid #eef2ff;
+}
+
+/* Customize Card */
+.customize-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fafbfc;
+  border: 2px dashed #cbd5e1;
+}
+
+.customize-card:hover {
+  border-color: #5b4bcf;
+  background: #f0f4ff;
+}
+
+.customize-content {
+  text-align: center;
+  color: #64748b;
+}
+
+.customize-icon {
+  width: 60px; height: 60px;
+  background: #e2e8f0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  color: #475569;
+  transition: all 0.3s;
+}
+
+.customize-card:hover .customize-icon {
+  background: #5b4bcf;
+  color: white;
+}
+
+.customize-content h3 {
+  color: #334155;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}

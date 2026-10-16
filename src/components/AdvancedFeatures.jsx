@@ -143,7 +143,7 @@ export default function AdvancedFeatures({ onBack }) {
         <div className="grid-3">
           <div style={{background:'var(--bg-color)', border:'1px solid #8b5cf6', borderRadius:'12px', padding:'1.5rem', position:'relative', boxShadow:'0 0 0 2px rgba(139, 92, 246, 0.2)'}}>
             <div style={{position:'absolute', top:'10px', right:'10px'}}><span className="status-badge success">Current</span></div>
-            <h3 style={{marginBottom:'0.5rem'}}>NexusBill Tech (India)</h3>
+            <h3 style={{marginBottom:'0.5rem'}}>YourBill Tech (India)</h3>
             <p className="sub-text" style={{marginBottom:'1rem'}}>Base: INR | FY: Apr-Mar</p>
             <div style={{display:'flex', gap:'0.5rem'}}>
               <button className="btn-secondary" style={{flex:1}}>Settings</button>
@@ -151,7 +151,7 @@ export default function AdvancedFeatures({ onBack }) {
           </div>
 
           <div style={{background:'var(--bg-color)', border:'1px solid var(--border-color)', borderRadius:'12px', padding:'1.5rem'}}>
-            <h3 style={{marginBottom:'0.5rem'}}>NexusBill LLC (USA)</h3>
+            <h3 style={{marginBottom:'0.5rem'}}>YourBill LLC (USA)</h3>
             <p className="sub-text" style={{marginBottom:'1rem'}}>Base: USD | FY: Jan-Dec</p>
             <div style={{display:'flex', gap:'0.5rem'}}>
               <button className="btn-primary" style={{flex:1, background:'var(--hover-bg)', color:'var(--text-primary)', border:'1px solid var(--border-color)'}}><RefreshCw size={14} style={{marginRight:'5px'}}/> Switch To</button>
@@ -160,7 +160,7 @@ export default function AdvancedFeatures({ onBack }) {
           </div>
 
           <div style={{background:'var(--bg-color)', border:'1px solid var(--border-color)', borderRadius:'12px', padding:'1.5rem'}}>
-            <h3 style={{marginBottom:'0.5rem'}}>NexusBill Retail UAE</h3>
+            <h3 style={{marginBottom:'0.5rem'}}>YourBill Retail UAE</h3>
             <p className="sub-text" style={{marginBottom:'1rem'}}>Base: AED | FY: Jan-Dec</p>
             <div style={{display:'flex', gap:'0.5rem'}}>
               <button className="btn-primary" style={{flex:1, background:'var(--hover-bg)', color:'var(--text-primary)', border:'1px solid var(--border-color)'}}><RefreshCw size={14} style={{marginRight:'5px'}}/> Switch To</button>
@@ -373,7 +373,7 @@ export default function AdvancedFeatures({ onBack }) {
             <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
               <div>
                 <strong>Monthly Tax Report (PDF) to Email</strong>
-                <div className="sub-text">Sends to admin@nexusbill.com on 1st</div>
+                <div className="sub-text">Sends to admin@yourbill.com on 1st</div>
               </div>
               <div className="toggle-switch on"></div>
             </div>
@@ -430,7 +430,7 @@ export default function AdvancedFeatures({ onBack }) {
              <div className="setting-row" style={{background:'var(--bg-color)', borderRadius:'8px', border:'1px solid var(--border-color)'}}>
               <div>
                 <strong>Google Workspace (OAuth2)</strong>
-                <div className="sub-text">1-click login for @nexusbill.com users</div>
+                <div className="sub-text">1-click login for @yourbill.com users</div>
               </div>
               <div className="toggle-switch on"></div>
             </div>
